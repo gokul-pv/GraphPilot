@@ -6,33 +6,17 @@ The orchestrator turns a request into a dependency graph of skills. It uses Netw
 
 ## Setup
 
-Use Python 3.11+ and `uv`. Run these commands from the repository root to prepare the gateway:
+Use Python 3.11+ and `uv`. Run these commands from the repository root to install the gateway and agent dependencies in their separate environments:
 
 ```bash
 cd llm_gatewayV9
 uv sync
+cd ../agent
+uv sync
 cd ..
 ```
 
-The current `agent/pyproject.toml` declares `name = "Multi-Agent Orchestrator"`. Spaces make this invalid package metadata, so `uv sync` and `uv run` fail in `agent/`. Until the metadata is fixed, create an environment and install its declared dependencies directly:
-
-```bash
-uv venv --python 3.11 agent/.venv
-agent/.venv/bin/python - <<'PY'
-import subprocess
-import sys
-import tomllib
-
-with open("agent/pyproject.toml", "rb") as file:
-    dependencies = tomllib.load(file)["project"]["dependencies"]
-subprocess.run(
-    ["uv", "pip", "install", "--python", sys.executable, *dependencies],
-    check=True,
-)
-PY
-```
-
-This reads the dependency list without installing the project itself. The older `agent/requirements.txt` does not include all dependencies.
+`uv sync` reads each project's `pyproject.toml`, creates its `.venv`, and includes the default development dependencies. Use this setup instead of the older, incomplete `agent/requirements.txt`.
 
 Configure the root `.env` and start the gateway as shown in the [quick start](../README.md#quick-start). For web research, install Chromium as described in the [browser guide](browser-automation.md#run-the-example). Optionally copy `agent/.env.example` to `agent/.env` and set a real Tavily key; otherwise search uses DDGS. The MCP server is launched automatically for tool-using skills.
 
@@ -40,9 +24,9 @@ Run from the repository root, with the gateway running:
 
 ```bash
 cd agent
-.venv/bin/python flow.py "Find the populations of London, Paris, and Berlin and compare them."
+uv run python flow.py "Find the populations of London, Paris, and Berlin and compare them."
 # Or enter queries interactively:
-.venv/bin/python flow.py --interactive
+uv run python flow.py --interactive
 ```
 
 ## Execution and recovery
@@ -62,8 +46,8 @@ Each run prints a session ID. State is stored under `agent/state/sessions/<sessi
 From `agent/`, replace `SESSION_ID` with an actual saved ID:
 
 ```bash
-.venv/bin/python flow.py --resume SESSION_ID
-.venv/bin/python replay.py SESSION_ID
+uv run python flow.py --resume SESSION_ID
+uv run python replay.py SESSION_ID
 ```
 
 Resume retains completed work and resets nodes saved as running to pending. An interrupted browser or desktop action may therefore run again. Replay is a terminal viewer: Enter advances, `p` expands the stored prompt, `o` expands output, and `q` exits.
@@ -78,13 +62,12 @@ Browser, computer, and sandbox execution have dedicated dispatch paths. The [cod
 
 ## Validation status
 
-The linked video is historical demo evidence. This documentation update checked source behavior, links, command syntax, and setup metadata; it did not rerun model-backed tasks or desktop workflows. The gateway dependency dry run passed; the agent metadata failure above was reproduced.
+The linked video is historical demo evidence. Documentation checks covered source behavior, links, command syntax, and package metadata; model-backed tasks and desktop workflows were not rerun.
 
-Existing focused tests cover recovery, critic insertion, and reuse of completed results. After setup, install the test dependencies and run them from `agent/`:
+Existing focused tests cover recovery, critic insertion, and reuse of completed results. After setup, run them from `agent/`:
 
 ```bash
-uv pip install --python .venv/bin/python pytest pytest-asyncio
-.venv/bin/python -m pytest tests/test_recovery.py tests/test_recovery_amnesia.py tests/test_critic_autoinsert.py
+uv run python -m pytest tests/test_recovery.py tests/test_recovery_amnesia.py tests/test_critic_autoinsert.py
 ```
 
-The root demo runner also calls `uv run` inside `agent/`, so it is affected by the same package-name issue. Use the direct Python commands above for this checkout.
+With the gateway running, use `bash run_demo.sh hello` from the repository root for the basic demo, or `bash run_demo.sh tests` for the runner's test suite.

@@ -23,8 +23,8 @@ Complete the [dependency setup](dag-orchestrator.md#setup), configure Gemini for
 
 ```bash
 cd agent
-.venv/bin/python -m playwright install chromium
-.venv/bin/python flow.py "Find the top 3 most-liked Text Generation models on Hugging Face and compare their architectures, parameter counts, and use cases."
+uv run python -m playwright install chromium
+uv run python flow.py "Find the top 3 most-liked Text Generation models on Hugging Face and compare their architectures, parameter counts, and use cases."
 ```
 
 The planner may use browser discovery, parallel workers for model details, extraction, critic checks, and formatting. The graph is generated for each request; this command does not enforce a fixed two-stage workflow. Results depend on the live site, access restrictions, and configured models.
@@ -36,7 +36,7 @@ Web research through the researcher skill also uses Chromium for fetched pages. 
 The CLI prints the session ID. From `agent/`, replace `SESSION_ID` with that ID:
 
 ```bash
-.venv/bin/python replay.py SESSION_ID
+uv run python replay.py SESSION_ID
 ```
 
 Press `o` on a browser node to inspect its output and chosen path. Node records live under `agent/state/sessions/SESSION_ID/nodes/`. Accessibility and vision runs can save screenshots and element legends under `agent/state/sessions/SESSION_ID/browser/`, grouped by attempt and layer. Extraction-only runs do not produce a screenshot trail.

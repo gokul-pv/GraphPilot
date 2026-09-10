@@ -37,17 +37,17 @@ Start at the repository root. Notes creates an “Agent Test Note”; the VS Cod
 ```bash
 cd agent
 # Notes through accessibility and a text model:
-.venv/bin/python -m computer.tasks.task_notes
+uv run python -m computer.tasks.task_notes
 # VS Code through Electron DOM control:
-.venv/bin/python -m computer.tasks.task_vscode --electron
+uv run python -m computer.tasks.task_vscode --electron
 # VS Code through screenshots:
-.venv/bin/python -m computer.tasks.task_vscode --vision
+uv run python -m computer.tasks.task_vscode --vision
 ```
 
 These scripts call the desktop driver directly. For planner-managed work, run a request through `flow.py` from `agent/`:
 
 ```bash
-.venv/bin/python flow.py "Open Notes and create a note titled Agent Test with the body Hello from the agent."
+uv run python flow.py "Open Notes and create a note titled Agent Test with the body Hello from the agent."
 ```
 
 The planner chooses the graph for that request. The [computer skill](../agent/computer/skill.py) handles desktop execution and returns its result to the orchestrator.
@@ -57,7 +57,7 @@ The planner chooses the graph for that request. The [computer skill](../agent/co
 DAG runs save node outputs under `agent/state/sessions/SESSION_ID/nodes/`, including recorded actions on successful computer nodes. From `agent/`, inspect a saved DAG session with:
 
 ```bash
-.venv/bin/python replay.py SESSION_ID
+uv run python replay.py SESSION_ID
 ```
 
 Replace `SESSION_ID` with the printed ID. This terminal viewer shows node data; it does not play desktop video.

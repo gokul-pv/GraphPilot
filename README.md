@@ -48,7 +48,7 @@ These are recorded demonstrations, not fresh validation runs of this checkout.
 
 ## Quick start
 
-Use Python 3.11+ and `uv`. First follow the [dependency setup](docs/dag-orchestrator.md#setup). The agent's current package name contains spaces, so that guide includes a workaround for `uv sync`.
+Use Python 3.11+ and `uv`. First follow the [dependency setup](docs/dag-orchestrator.md#setup) to run `uv sync` for both the gateway and agent.
 
 Create a `.env` file at the repository root with your provider key. Gemini is used by most default skills:
 
@@ -70,7 +70,7 @@ Run a basic task in another terminal, also starting at the repository root:
 
 ```bash
 cd agent
-.venv/bin/python flow.py "Say hello in one short sentence."
+uv run python flow.py "Say hello in one short sentence."
 ```
 
 The gateway dashboard is at <http://localhost:8109>. Use `flow.py --interactive` for repeated queries.
@@ -82,7 +82,7 @@ The gateway dashboard is at <http://localhost:8109>. Use `flow.py --interactive`
 ```bash
 open -n -g -a CuaDriver --args serve
 cd agent
-.venv/bin/python -m computer.tasks.task_notes
+uv run python -m computer.tasks.task_notes
 ```
 
 These examples operate the host desktop.
