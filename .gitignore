@@ -1,0 +1,23 @@
+# secrets / env
+.env
+.env.*
+!.env.example
+
+# runtime state
+state/
+sandbox/
+usage.json
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# os
+.DS_Store
+
+gateway_v8.db
+gateway_v9.db
+out/

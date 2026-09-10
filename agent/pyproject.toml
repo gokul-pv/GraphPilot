@@ -1,0 +1,38 @@
+[project]
+name = "GraphPilot"
+version = "0.1.0"
+description = "DAG Agent with browser and computer use skills"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]",
+    "httpx",
+    "ddgs",
+    "tavily-python",
+    "crawl4ai",
+    "python-dotenv",
+    "pydantic>=2.13.4",
+    "faiss-cpu>=1.8.0",
+    "numpy>=1.26",
+    "networkx>=3.2",
+    "pyyaml>=6.0",
+    # Session 9 additions for the Browser skill.
+    "playwright>=1.47",
+    "pillow>=10.0",
+    "trafilatura>=1.12",
+    "lxml>=5.2",
+    "lxml-html-clean>=0.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+markers = [
+    "network: test requires internet access",
+    "embed: test requires the embedding endpoint (gateway V8)",
+]

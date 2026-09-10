@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LLM Gateway · Help & Free Keys</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9;
+    --muted: #8b949e; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
+    --yellow: #d29922; --accent: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; margin: 0; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header nav a { color: var(--blue); margin-left: 16px; text-decoration: none; }
+  main { padding: 24px 20px; max-width: 1000px; margin: 0 auto; }
+  h2 { font-size: 18px; margin-top: 36px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin-top: 24px; color: var(--blue); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; }
+  code { background: #21262d; padding: 1px 6px; border-radius: 3px; font-size: 13px; }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; }
+  ol li, ul li { margin: 4px 0; }
+  .star { color: var(--yellow); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: #21262d; color: var(--muted); margin-left: 6px; }
+  .ok { color: var(--green); }
+  .warn { color: var(--yellow); }
+  .err { color: var(--red); }
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 LLM Gateway · Help</h1>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/help">Help</a>
+  </nav>
+</header>
+<main>
+
+<p>This service routes LLM calls across <strong>seven free providers</strong>, with automatic failover, rate-limit tracking, persistent logging, and a manual override. Below: how to use it, what each provider offers, and how to get free keys.</p>
+
+<h2>Using the gateway</h2>
+
+<h3>Python (built-in client)</h3>
+<pre><code>from client import LLM, ask
+
+# one-shot
+print(ask("Explain transformers in 3 lines"))
+
+# explicit provider (shortcut keys: g, n, o, gr, c, or, gh)
+print(ask("hi", provider="gr"))   # groq
+print(ask("hi", provider="g"))    # gemini
+
+# full client
+llm = LLM()
+r = llm.chat("hi", provider="gemini", max_tokens=128, temperature=0.5)
+print(r["text"], r["provider"], r["latency_ms"])
+
+# streaming
+for chunk in llm.stream("count to 5"):
+    print(chunk, end="", flush=True)</code></pre>
+
+<h3>HTTP (OpenAI-style)</h3>
+<pre><code>curl http://localhost:8099/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "hello", "provider": "g", "max_tokens": 128}'</code></pre>
+
+<h3>Shortcut keys</h3>
+<table>
+  <tr><th>Key</th><th>Provider</th><th>Aliases</th></tr>
+  <tr><td><code>g</code></td><td>Gemini</td><td><code>gem</code>, <code>gemini</code></td></tr>
+  <tr><td><code>n</code></td><td>NVIDIA NIM</td><td><code>nv</code>, <code>nvidia</code></td></tr>
+  <tr><td><code>o</code></td><td>Ollama (local)</td><td><code>oll</code>, <code>ollama</code></td></tr>
+  <tr><td><code>gr</code></td><td>Groq</td><td><code>groq</code></td></tr>
+  <tr><td><code>c</code></td><td>Cerebras</td><td><code>cer</code>, <code>cerebras</code></td></tr>
+  <tr><td><code>or</code></td><td>OpenRouter</td><td><code>opr</code>, <code>openrouter</code></td></tr>
+  <tr><td><code>gh</code></td><td>GitHub Models</td><td><code>ghb</code>, <code>github</code></td></tr>
+</table>
+<p>Without <code>provider</code>, the gateway tries them in failover order (configurable via <code>LLM_ORDER</code> in <code>.env</code>). Explicit provider = no failover (errors surface immediately).</p>
+
+<h2>Provider overview</h2>
+
+<h3>1. Gemini (Google AI Studio)</h3>
+<ul>
+  <li>Best models: <code>gemini-3.1-pro-preview</code>, <code>gemini-3.1-flash-lite-preview</code> <span class="star">★ default</span>, <code>gemini-2.5-flash</code>, <code>gemini-2.5-pro</code></li>
+  <li>Context: <strong>1M tokens in / 65K out</strong></li>
+  <li>Free tier (Flash-Lite): ~15 RPM · 250K TPM · 1,000 RPD</li>
+  <li>Pro models: 5 RPM · 25 RPD <span class="warn">(very tight)</span></li>
+</ul>
+<p><b>Get a key:</b></p>
+<ol>
+  <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a></li>
+  <li>Sign in with your Google account</li>
+  <li>Click <strong>Create API key</strong> → pick or create a project → copy the <code>AIza…</code> key</li>
+  <li>No credit card required for free tier</li>
+</ol>
+
+<h3>2. NVIDIA NIM (build.nvidia.com)</h3>
+<ul>
+  <li>Top 100B+ models: <code>deepseek-ai/deepseek-r1</code> (671B MoE) <span class="star">★</span>, <code>meta/llama-3.1-405b-instruct</code>, <code>nvidia/llama-3.1-nemotron-ultra-253b-v1</code>, <code>deepseek-ai/deepseek-v3.2</code> <span class="star">★ default</span></li>
+  <li>187 models in catalog total</li>
+  <li>Free tier: <strong>40 RPM</strong>, 1,000 inference credits on signup (request up to 5,000)</li>
+  <li>OpenAI-compatible</li>
+</ul>
+<p><b>Get a key:</b></p>
+<ol>
+  <li>Go to <a href="https://build.nvidia.com/" target="_blank">build.nvidia.com</a></li>
+  <li>Sign in (free NVIDIA Developer Program)</li>
+  <li>Pick any model → click <strong>Get API Key</strong> → copy the <code>nvapi-…</code> key</li>
+  <li>No credit card required</li>
+</ol>
+
+<h3>3. Groq <span class="badge">fastest cloud</span></h3>
+<ul>
+  <li>Top models: <code>llama-3.3-70b-versatile</code> <span class="star">★ default</span>, <code>openai/gpt-oss-120b</code>, <code>openai/gpt-oss-20b</code>, <code>meta-llama/llama-4-scout-17b-16e-instruct</code>, <code>qwen/qwen3-32b</code>, <code>groq/compound</code></li>
+  <li>Speed: 300+ tokens/sec on Llama 3.3 70B</li>
+  <li>Free tier: <strong>30 RPM · 6,000 TPM · 1,000 RPD</strong> (RPD is the binding limit; ~500K tokens/day for 70B)</li>
+  <li>OpenAI-compatible</li>
+</ul>
+<p><b>Get a key:</b></p>
+<ol>
+  <li>Go to <a href="https://console.groq.com" target="_blank">console.groq.com</a></li>
+  <li>Sign in with Google or GitHub</li>
+  <li><strong>API Keys</strong> → <strong>Create API Key</strong> → copy the <code>gsk_…</code> key</li>
+  <li>No credit card required</li>
+</ol>
+
+<h3>4. Cerebras <span class="badge">2000+ tok/s</span></h3>
+<ul>
+  <li>4 models: <code>zai-glm-4.7</code> <span class="star">★ default</span>, <code>qwen-3-235b-a22b-instruct-2507</code>, <code>gpt-oss-120b</code>, <code>llama3.1-8b</code></li>
+  <li>Free tier: <strong>30 RPM · 60K TPM · 1,000,000 tokens/day</strong> <span class="ok">(most generous daily token cap)</span></li>
+  <li><span class="warn">Gotcha: 8,192 token context cap on free tier</span> across all models</li>
+</ul>
+<p><b>Get a key:</b></p>
+<ol>
+  <li>Go to <a href="https://cloud.cerebras.ai" target="_blank">cloud.cerebras.ai</a></li>
+  <li>Sign in with Google or GitHub</li>
+  <li><strong>API Keys</strong> → <strong>Create Key</strong> → copy the <code>csk-…</code> key</li>
+  <li>No credit card required</li>
+</ol>
+
+<h3>5. OpenRouter <span class="badge">one key, many models</span></h3>
+<ul>
+  <li>24 free models with <code>:free</code> suffix. Best:
+    <code>nvidia/nemotron-3-super-120b-a12b:free</code> <span class="star">★ default</span> (262K ctx),
+    <code>nousresearch/hermes-3-llama-3.1-405b:free</code>,
+    <code>qwen/qwen3-next-80b-a3b-instruct:free</code> (262K),
+    <code>openai/gpt-oss-120b:free</code>,
+    <code>google/gemma-4-31b-it:free</code>,
+    <code>meta-llama/llama-3.3-70b-instruct:free</code>
+  </li>
+  <li>Free tier: <strong>20 RPM · 50 RPD per free model</strong> (200 RPD if you've ever added $10 credit)</li>
+  <li>Free models share a daily pool — switching models doesn't reset</li>
+</ul>
+<p><b>Get a key:</b></p>
+<ol>
+  <li>Go to <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></li>
+  <li>Sign in with Google or GitHub</li>
+  <li><strong>Keys</strong> → <strong>Create Key</strong> → copy the <code>sk-or-…</code> key</li>
+</ol>
+
+<h3>6. GitHub Models <span class="badge">includes GPT-5</span></h3>
+<ul>
+  <li><strong>43 frontier models</strong>, including:
+    <code>openai/gpt-5</code>, <code>gpt-5-mini</code>, <code>gpt-5-nano</code>,
+    <code>openai/gpt-4.1</code> (1M ctx), <code>gpt-4.1-mini</code> <span class="star">★ default</span>,
+    <code>openai/o1</code>, <code>o3</code>, <code>o3-mini</code>, <code>o4-mini</code>,
+    <code>meta/meta-llama-3.1-405b-instruct</code>,
+    <code>meta/llama-4-scout-17b-16e-instruct</code> (10M ctx!),
+    <code>deepseek/deepseek-r1</code>, <code>deepseek-v3-0324</code>,
+    <code>xai/grok-3</code>, <code>microsoft/phi-4-reasoning</code>, <code>mistral-ai/codestral-2501</code>
+  </li>
+  <li><span class="warn">Free tier per-request cap: 8K input / 4K output tokens</span></li>
+  <li>Low-tier models (4.1-mini, 4o-mini, phi-4): <strong>15 RPM · 150 RPD · 5 concurrent</strong></li>
+  <li>High-tier (4.1, 4o, llama-3.3-70b, llama-3.1-405b): <strong>10 RPM · 50 RPD · 2 concurrent</strong></li>
+  <li>Custom-tier (GPT-5, o1, o3, DeepSeek-R1, Grok): typically ~8 RPM, ~25 RPD <span class="warn">(very tight)</span></li>
+</ul>
+<p><b>Get a key:</b></p>
+<ol>
+  <li>Go to <a href="https://github.com/marketplace/models" target="_blank">github.com/marketplace/models</a></li>
+  <li>Sign in with your GitHub account</li>
+  <li>Pick any model → <strong>Use this model</strong> → <strong>Get API key</strong></li>
+  <li>This generates a <strong>Personal Access Token</strong> (no scopes required for Models)</li>
+  <li>Or via Settings: <strong>Developer settings</strong> → <strong>Personal access tokens (fine-grained)</strong> → Generate</li>
+</ol>
+
+<h3>7. Ollama (local)</h3>
+<ul>
+  <li>Runs on your machine — zero rate limits, zero cost, 0ms cooldown</li>
+  <li>Default: <code>gemma4:31b</code></li>
+</ul>
+<p><b>Set up:</b></p>
+<ol>
+  <li>Install: <a href="https://ollama.com" target="_blank">ollama.com</a> → download for your OS</li>
+  <li>Pull a model: <code>ollama pull gemma4:31b</code> (or <code>llama3.2</code>, <code>phi4</code>, etc.)</li>
+  <li>Verify: <code>ollama list</code></li>
+  <li>The gateway auto-detects via <code>OLLAMA_URL</code> (default: <code>http://localhost:11434</code>)</li>
+</ol>
+
+<h2>Summary table</h2>
+<table>
+  <tr><th>Provider</th><th>Default model</th><th>RPM</th><th>RPD</th><th>Other limits</th></tr>
+  <tr><td>Ollama</td><td>gemma4:31b</td><td>—</td><td>—</td><td>local, unlimited</td></tr>
+  <tr><td>Cerebras</td><td>zai-glm-4.7</td><td>30</td><td>—</td><td>1M tokens/day · 8K ctx cap</td></tr>
+  <tr><td>Groq</td><td>llama-3.3-70b-versatile</td><td>30</td><td>1,000</td><td>6K TPM · 500K tok/day</td></tr>
+  <tr><td>NVIDIA NIM</td><td>deepseek-ai/deepseek-v3.2</td><td>40</td><td>—</td><td>1K credits on signup</td></tr>
+  <tr><td>Gemini</td><td>gemini-3.1-flash-lite-preview</td><td>15</td><td>1,000</td><td>250K TPM · 1M ctx</td></tr>
+  <tr><td>OpenRouter</td><td>nvidia/nemotron-3-super-120b-a12b:free</td><td>20</td><td>50</td><td>per model · pooled</td></tr>
+  <tr><td>GitHub Models</td><td>openai/gpt-4.1-mini</td><td>10–15</td><td>50–150</td><td>8K in / 4K out per req</td></tr>
+</table>
+
+<h2>Configuration (.env)</h2>
+<p>The gateway reads from <code>.env</code>. All keys are optional — providers without keys are skipped.</p>
+<pre><code>GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-3.1-flash-lite-preview
+
+NVIDIA_API_KEY=...
+NVIDIA_MODEL=deepseek-ai/deepseek-v3.2
+
+GROQ_API_KEY=...
+GROQ_MODEL=llama-3.3-70b-versatile
+
+CEREBRAS_API_KEY=...
+CEREBRAS_MODEL=zai-glm-4.7
+
+OPEN_ROUTER_API_KEY=...
+OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+
+GITHUB_ACCESS_TOKEN=...
+GITHUB_MODEL=openai/gpt-4.1-mini
+
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=gemma4:31b
+
+LLM_ORDER=ollama,gemini,nvidia,groq,cerebras,openrouter,github
+GATEWAY_PORT=8099</code></pre>
+
+<h2>HTTP API reference</h2>
+<table>
+  <tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+  <tr><td>POST</td><td><code>/v1/chat</code></td><td>Send a chat request (with optional <code>provider</code>, <code>model</code>, <code>stream</code>)</td></tr>
+  <tr><td>GET</td><td><code>/v1/providers</code></td><td>List configured providers, shortcuts, default models, limits</td></tr>
+  <tr><td>GET</td><td><code>/v1/status</code></td><td>Live RPM/RPD/TPM usage per provider, today's stats</td></tr>
+  <tr><td>GET</td><td><code>/v1/calls?limit=100&amp;provider=&amp;status=</code></td><td>Recent call log</td></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>Dashboard</td></tr>
+  <tr><td>GET</td><td><code>/help</code></td><td>This page</td></tr>
+</table>
+
+<h2>How failover works</h2>
+<ol>
+  <li>Caller sends request (with or without <code>provider</code>).</li>
+  <li>Router estimates token usage from prompt length.</li>
+  <li>Walks providers in <code>LLM_ORDER</code>, skipping any that:
+    <ul>
+      <li>Are inside their per-provider cooldown window (cooldown = 60/RPM)</li>
+      <li>Have hit RPM, RPD, TPM, or daily token cap</li>
+      <li>Have a <code>max_ctx</code> smaller than the prompt</li>
+    </ul>
+  </li>
+  <li>First eligible provider gets the call. On 5xx / timeout / 429 → moves to next.</li>
+  <li>If <code>provider=...</code> was explicitly set, no failover — error surfaces.</li>
+  <li>Every call (success or fail) is logged to <code>gateway.db</code> with provider, model, tokens, latency, status.</li>
+</ol>
+
+</main>
+</body>
+</html>

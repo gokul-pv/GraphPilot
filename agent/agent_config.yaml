@@ -1,0 +1,122 @@
+# Session 8 skills catalogue.
+#
+# Each entry below names one skill (the node "type" the orchestrator can
+# run). The two files that define a skill are this yaml entry and the
+# referenced `prompt:` markdown — there is no Python class per skill.
+#
+# Fields:
+#   prompt              path to the system prompt, relative to S8/code/
+#   description         one-line summary (shown in dashboards / replay)
+#   provider_pin        OPTIONAL preferred provider; overridden by
+#                       agent_routing.yaml in the gateway if set there.
+#                       Most pins live in the gateway side, not here.
+#   tools_allowed       which MCP tools this skill may call. Empty list
+#                       means the skill is text-only and never calls a
+#                       tool through the gateway's tool-use channel.
+#   internal_successors STATIC graph extension. Whenever this skill
+#                       finishes, the orchestrator adds these skills as
+#                       successor nodes regardless of what the skill
+#                       itself emitted in AgentResult.successors. Used
+#                       by Coder → SandboxExecutor.
+#   critic              When true, the orchestrator inserts a Critic
+#                       node on every outgoing edge from this skill.
+#                       Used by Distiller.
+#
+# Anything declared under `metadata:` is opaque to the orchestrator; the
+# skill is free to interpret its own metadata however it wants.
+
+planner:
+  prompt: prompts/planner.md
+  tools_allowed: []
+  temperature: 0.4         # decompositions need a little breathing room
+  max_tokens: 1500
+  description: Decomposes user queries into the initial DAG and synthesises recovery subgraphs on node failure.
+
+retriever:
+  prompt: prompts/retriever.md
+  tools_allowed: [search_knowledge]
+  temperature: 0.2         # retrieval is mostly deterministic
+  max_tokens: 1200
+  description: Searches Memory and the FAISS index for material relevant to a query.
+
+researcher:
+  prompt: prompts/researcher.md
+  tools_allowed: [web_search, fetch_url]
+  temperature: 0.7         # exploratory; let the model choose phrasings
+  max_tokens: 2500
+  description: Performs multi-step web research and produces normalised text outputs.
+
+distiller:
+  prompt: prompts/distiller.md
+  critic: true
+  temperature: 0.1         # extraction; almost-zero
+  max_tokens: 1200
+  description: Extracts structured fields from raw text or page content.
+
+summariser:
+  prompt: prompts/summariser.md
+  temperature: 0.3
+  max_tokens: 1200
+  description: Condenses long content into a short form.
+
+critic:
+  prompt: prompts/critic.md
+  temperature: 0.0         # pass/fail; we want determinism
+  max_tokens: 500
+  description: Evaluates an upstream node's output; emits pass or fail with rationale.
+
+formatter:
+  prompt: prompts/formatter.md
+  temperature: 0.3
+  max_tokens: 1500
+  description: Renders the final answer for the user. Conventional terminal node — its output.final_answer is what the executor returns.
+
+sandbox_executor:
+  prompt: prompts/sandbox_executor.md
+  temperature: 0.0
+  max_tokens: 400
+  description: Runs code from a Coder node in the sandbox and returns stdout, stderr, exit code, and any generated files.
+
+coder:
+  prompt: prompts/coder.md
+  internal_successors: [sandbox_executor]
+  temperature: 0.2
+  max_tokens: 1500
+  description: STUB. Student assignment for Session 8. Emits Python code; the orchestrator hands it to sandbox_executor next.
+
+browser:
+  prompt: prompts/browser.md
+  # The Browser skill does not go through the standard LLM-call dispatch.
+  # It owns its own cascade (HTML extract → a11y text → vision SoM) and
+  # routes each layer's gateway call internally. temperature / max_tokens
+  # are kept here for registry uniformity but the dispatcher ignores them.
+  temperature: 0.0
+  max_tokens: 1024
+  description: |
+    Fetches and interacts with web pages through a four-layer cascade
+    (extract, deterministic, a11y, vision). Inputs in metadata: url
+    (required) and goal (required). Returns BrowserOutput with the
+    chosen layer surfaced as output.path. Use when Researcher's
+    fetch_url is insufficient: JavaScript-rendered content, interactive
+    widgets, multi-page workflows.
+
+computer:
+  prompt: prompts/computer.md
+  # The Computer skill does not go through the standard LLM-call dispatch.
+  # It owns its own cascade (ax_extract → deterministic → ax_llm → electron → vision)
+  # and drives the host desktop via the cua-driver daemon.
+  # temperature / max_tokens are kept for registry uniformity; dispatcher ignores them.
+  temperature: 0.0
+  max_tokens: 1024
+  description: |
+    Controls macOS desktop applications through a five-layer cascade
+    (ax_extract, deterministic, ax_llm, electron, vision). Required metadata:
+      goal        — free-text description of what to accomplish
+      app         — (optional) partial app name to target, e.g. "TextEdit"
+      window_id   — (optional) cua-driver window id if already known
+      actions     — (optional) list of deterministic actions for Layer 2a
+      force_path  — (optional) pin to a specific layer
+    Returns ComputerOutput with path (layer used) and actions taken.
+    Requires: cua-driver daemon running (open -n -g -a CuaDriver --args serve)
+    and Accessibility permission granted to the terminal process.
+

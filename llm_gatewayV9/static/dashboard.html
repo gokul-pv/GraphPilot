@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LLM Gateway V7 · Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9;
+    --muted: #8b949e; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
+    --yellow: #d29922; --accent: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; margin: 0; padding: 0; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header nav a { color: var(--blue); margin-left: 16px; text-decoration: none; }
+  header nav a:hover { text-decoration: underline; }
+  main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 24px 0 10px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .card .name { font-weight: 600; font-size: 15px; }
+  .card .model { color: var(--muted); font-size: 12px; margin-top: 2px; word-break: break-all; }
+  .bar { height: 6px; background: #21262d; border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--green); transition: width 0.3s; }
+  .bar > div.warn { background: var(--yellow); }
+  .bar > div.err { background: var(--red); }
+  .row { display: flex; justify-content: space-between; font-size: 12px; margin-top: 10px; color: var(--muted); }
+  .row b { color: var(--text); font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+  td.ok { color: var(--green); }
+  td.err { color: var(--red); }
+  td.prov { color: var(--blue); font-weight: 500; }
+  .controls { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  select, input { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+  button { background: var(--blue); border: none; color: white; padding: 6px 14px; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #3a8cf2; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: #21262d; color: var(--muted); }
+  .pill { padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+  .pill.ok { background: rgba(63,185,80,0.15); color: var(--green); }
+  .pill.err { background: rgba(248,81,73,0.15); color: var(--red); }
+  .pill.cap { background: rgba(88,166,255,0.15); color: var(--blue); margin-right: 4px; }
+  .pill.capx { background: #21262d; color: var(--muted); margin-right: 4px; text-decoration: line-through; }
+  .err-msg { color: var(--red); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .test-area { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+  .test-area textarea { flex: 1; min-width: 300px; min-height: 70px; background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 4px; font: 13px ui-monospace, monospace; }
+  #test-out { margin-top: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; white-space: pre-wrap; font: 13px ui-monospace, monospace; min-height: 40px; }
+  .order-list { color: var(--accent); font-family: ui-monospace, monospace; font-size: 12px; }
+  .caps-row { margin-top: 8px; }
+  .stat { display: inline-block; margin-right: 14px; font-size: 11px; color: var(--muted); }
+  .stat b { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ LLM Gateway <span style="color:var(--accent)">V7</span> <span class="badge" id="port-badge"></span></h1>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/help">Help / Free Keys</a>
+    <a href="/v1/capabilities">API: capabilities</a>
+    <a href="/v1/providers">API: providers</a>
+    <a href="/v1/routers">API: routers</a>
+    <a href="/v1/status">API: status</a>
+  </nav>
+</header>
+<main>
+  <h2>Failover order</h2>
+  <div id="order" class="order-list">loading…</div>
+
+  <h2>Worker pool <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0; color:var(--muted)">cache+tool aware routing</span></h2>
+  <div id="providers" class="grid"></div>
+
+  <h2>Router pool <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0; color:var(--accent)">P/M/D classifiers — separate quotas, never touch worker RPMs</span></h2>
+  <div id="router-order" class="order-list" style="font-size:11px; margin-bottom:8px;">loading…</div>
+  <div id="routers" class="grid"></div>
+
+  <h2>Embedders <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0; color:var(--accent)">V7 only — fixed 768-dim, Ollama → Gemini failover</span></h2>
+  <div id="embed-order" class="order-list" style="font-size:11px; margin-bottom:8px;">loading…</div>
+  <div id="embedders" class="grid"></div>
+
+  <h2>Quick test (V7 features supported)</h2>
+  <div class="test-area">
+    <select id="test-prov"><option value="">auto (failover)</option></select>
+    <select id="test-route">
+      <option value="">no auto_route</option>
+      <option value="perception">auto_route=perception</option>
+      <option value="memory">auto_route=memory</option>
+      <option value="decision">auto_route=decision</option>
+    </select>
+    <textarea id="test-prompt" placeholder="prompt…">Say hello in one short line.</textarea>
+    <button onclick="runTest()">Send</button>
+  </div>
+  <div id="test-out">—</div>
+
+  <h2>Recent calls
+    <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0;">
+      <select id="filter-prov" onchange="loadCalls()"><option value="">all providers</option></select>
+      <select id="filter-status" onchange="loadCalls()">
+        <option value="">all</option><option value="ok">ok</option><option value="error">errors</option>
+      </select>
+    </span>
+  </h2>
+  <table id="calls-table">
+    <thead>
+      <tr><th>Time</th><th>Role</th><th>Provider</th><th>Model</th><th>Status</th>
+      <th>In</th><th>Out</th><th>Tier</th><th>Tools</th><th>Latency</th><th>Override</th><th>Error / Attempts</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<script>
+function fmtAgo(ts) {
+  if (!ts) return '—';
+  const d = Math.round(Date.now()/1000 - ts);
+  if (d < 60) return d + 's ago';
+  if (d < 3600) return Math.round(d/60) + 'm ago';
+  return Math.round(d/3600) + 'h ago';
+}
+function barClass(used, limit) {
+  if (!limit || limit > 99999) return '';
+  const p = used/limit;
+  if (p > 0.85) return 'err';
+  if (p > 0.6) return 'warn';
+  return '';
+}
+function capPills(caps) {
+  const items = [['tools','tools'],['caching','cache'],['reasoning','think'],['structured','struct'],['parallel_tools','parallel']];
+  return items.map(([k,label]) => `<span class="pill ${caps[k] ? 'cap' : 'capx'}">${label}</span>`).join('');
+}
+
+let CAPS = {};
+
+async function loadCaps() {
+  CAPS = await fetch('/v1/capabilities').then(r => r.json());
+}
+
+async function refresh() {
+  const r = await fetch('/v1/status').then(r => r.json());
+  document.getElementById('order').textContent = r.order.join(' → ');
+
+  const grid = document.getElementById('providers');
+  const provSelect = document.getElementById('test-prov');
+  const filterSelect = document.getElementById('filter-prov');
+  const existingOpts = new Set([...provSelect.options].map(o => o.value));
+  const filterOpts = new Set([...filterSelect.options].map(o => o.value));
+
+  grid.innerHTML = '';
+  Object.keys(r.live).forEach(name => {
+    const s = r.live[name];
+    const today = (r.today && r.today[name]) || {};
+    const caps = (CAPS[name]) || s.capabilities || {};
+    const card = document.createElement('div');
+    card.className = 'card';
+    const cdLeft = s.cooldown_remaining > 0 ? ` <span class="pill err">cooldown ${s.cooldown_remaining.toFixed(1)}s</span>` : '';
+    const boLeft = s.backoff_remaining > 0 ? ` <span class="pill err" title="${s.backoff_reason}">backoff ${s.backoff_remaining.toFixed(0)}s</span>` : '';
+    card.innerHTML = `
+      <div class="name">${name}${cdLeft}${boLeft}</div>
+      <div class="model">${s.model}</div>
+      <div class="caps-row">${capPills(caps)}</div>
+      <div style="margin-top:10px;">
+        <div class="row"><span>RPM</span><b>${s.rpm_used} / ${s.rpm_limit}</b></div>
+        <div class="bar"><div class="${barClass(s.rpm_used, s.rpm_limit)}" style="width:${Math.min(100, s.rpm_used/s.rpm_limit*100)}%"></div></div>
+      </div>
+      <div style="margin-top:8px;">
+        <div class="row"><span>RPD</span><b>${s.rpd_used} / ${s.rpd_limit}</b></div>
+        <div class="bar"><div class="${barClass(s.rpd_used, s.rpd_limit)}" style="width:${Math.min(100, s.rpd_used/s.rpd_limit*100)}%"></div></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <span class="stat">calls today <b>${today.calls || 0}</b></span>
+        <span class="stat">tool calls <b>${today.tool_calls || 0}</b></span>
+      </div>
+      <div class="row">
+        <span class="stat">cache reads <b>${today.cache_reads || 0}</b></span>
+        <span class="stat">cache writes <b>${today.cache_creates || 0}</b></span>
+      </div>
+      <div class="row">
+        <span>Last call</span><b>${fmtAgo(s.last_call)}</b>
+      </div>
+    `;
+    grid.appendChild(card);
+
+    if (!existingOpts.has(name)) {
+      const o = document.createElement('option'); o.value = name; o.textContent = name;
+      provSelect.appendChild(o);
+    }
+    if (!filterOpts.has(name)) {
+      const o = document.createElement('option'); o.value = name; o.textContent = name;
+      filterSelect.appendChild(o);
+    }
+  });
+}
+
+async function refreshRouters() {
+  let r;
+  try { r = await fetch('/v1/routers').then(x => x.json()); }
+  catch (e) { return; }
+  document.getElementById('router-order').textContent = 'failover: ' + r.order.join(' → ');
+  const grid = document.getElementById('routers');
+  grid.innerHTML = '';
+  Object.keys(r.live).forEach(name => {
+    const s = r.live[name];
+    const today = (r.today && r.today[name]) || {};
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.borderLeft = '3px solid var(--accent)';
+    const cdLeft = s.cooldown_remaining > 0 ? ` <span class="pill err">cooldown ${s.cooldown_remaining.toFixed(1)}s</span>` : '';
+    const boLeft = s.backoff_remaining > 0 ? ` <span class="pill err" title="${s.backoff_reason}">backoff ${s.backoff_remaining.toFixed(0)}s</span>` : '';
+    card.innerHTML = `
+      <div class="name">${name} <span class="pill cap">router</span>${cdLeft}${boLeft}</div>
+      <div class="model">${s.model}</div>
+      <div style="margin-top:10px;">
+        <div class="row"><span>RPM</span><b>${s.rpm_used} / ${s.rpm_limit}</b></div>
+        <div class="bar"><div class="${barClass(s.rpm_used, s.rpm_limit)}" style="width:${Math.min(100, s.rpm_used/s.rpm_limit*100)}%"></div></div>
+      </div>
+      <div style="margin-top:8px;">
+        <div class="row"><span>RPD</span><b>${s.rpd_used} / ${s.rpd_limit}</b></div>
+        <div class="bar"><div class="${barClass(s.rpd_used, s.rpd_limit)}" style="width:${Math.min(100, s.rpd_used/s.rpd_limit*100)}%"></div></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <span class="stat">routing calls today <b>${today.calls || 0}</b></span>
+      </div>
+      <div class="row">
+        <span>Last call</span><b>${fmtAgo(s.last_call)}</b>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+async function refreshEmbedders() {
+  let r;
+  try { r = await fetch('/v1/embedders').then(x => x.json()); }
+  catch (e) { return; }
+  document.getElementById('embed-order').innerHTML =
+    `<b>${r.order.join(' → ')}</b> · fixed dim <b>${r.fixed_dim}</b> · max input <b>${r.max_input_chars}</b> chars · backoff ${r.backoff_steps_s.join(' → ')}s`;
+  const grid = document.getElementById('embedders');
+  grid.innerHTML = '';
+  Object.keys(r.live).forEach(name => {
+    const s = r.live[name];
+    const today = (r.today && r.today[name]) || {};
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.borderLeft = '3px solid var(--accent)';
+    const rpmLabel = s.rpm_limit > 0 ? `${s.rpm_used} / ${s.rpm_limit}` : `${s.rpm_used} / ∞`;
+    const rpmPct = s.rpm_limit > 0 ? Math.min(100, s.rpm_used / s.rpm_limit * 100) : 0;
+    const cdPill = s.cooldown_remaining > 0
+      ? ` <span class="pill err">cooldown ${s.cooldown_remaining.toFixed(1)}s</span>` : '';
+    const boPill = s.backoff_remaining > 0
+      ? ` <span class="pill err" title="${s.backoff_reason}">backoff ${s.backoff_remaining.toFixed(0)}s (step ${s.backoff_step})</span>` : '';
+    card.innerHTML = `
+      <div class="name">${name}${cdPill}${boPill}</div>
+      <div class="model">${r.models[name]}</div>
+      <div style="margin-top:10px;">
+        <div class="row"><span>RPM</span><b>${rpmLabel}</b></div>
+        <div class="bar"><div class="${barClass(s.rpm_used, s.rpm_limit || 99999)}" style="width:${rpmPct}%"></div></div>
+      </div>
+      <div class="row" style="margin-top:8px;"><span>Cooldown</span><b>${s.cooldown_s}s</b></div>
+      <div class="row"><span>Today</span><b>${today.calls || 0} calls · ${today.errors || 0} errors</b></div>
+      <div class="row"><span>Avg latency</span><b>${today.avg_latency ? today.avg_latency.toFixed(0) + 'ms' : '—'}</b></div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+async function loadCalls() {
+  const prov = document.getElementById('filter-prov').value;
+  const stat = document.getElementById('filter-status').value;
+  const params = new URLSearchParams({limit: 100});
+  if (prov) params.set('provider', prov);
+  if (stat) params.set('status', stat);
+  const rows = await fetch('/v1/calls?' + params).then(r => r.json());
+  const tb = document.querySelector('#calls-table tbody');
+  tb.innerHTML = '';
+  rows.forEach(c => {
+    const tr = document.createElement('tr');
+    const dt = new Date(c.ts * 1000).toLocaleTimeString();
+    const role = c.call_role || 'worker';
+    const isRouter = role.startsWith('router');
+    const roleBadge = isRouter
+      ? `<span class="pill cap" style="background:rgba(163,113,247,0.2);color:var(--accent)">${role.replace('router_','rt:')}</span>`
+      : `<span class="pill ok">worker</span>`;
+    const tier = c.router_decision ? `<span class="badge">${c.router_decision}</span>` : '—';
+    tr.innerHTML = `
+      <td>${dt}</td>
+      <td>${roleBadge}</td>
+      <td class="prov">${c.provider}</td>
+      <td>${c.model}</td>
+      <td class="${c.status === 'ok' ? 'ok' : 'err'}">${c.status}</td>
+      <td>${c.input_tokens || 0}</td>
+      <td>${c.output_tokens || 0}</td>
+      <td>${tier}</td>
+      <td>${c.tool_calls || 0}${c.tool_dialect ? ' <span class="badge">'+c.tool_dialect+'</span>' : ''}</td>
+      <td>${c.latency_ms}ms</td>
+      <td>${c.override || '—'}</td>
+      <td class="err-msg" title="${(c.error || '') + (c.attempted ? ' | attempted: ' + c.attempted : '')}">${c.error || (c.attempted || '—')}</td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+async function runTest() {
+  const prompt = document.getElementById('test-prompt').value;
+  const provider = document.getElementById('test-prov').value || null;
+  const auto_route = document.getElementById('test-route').value || null;
+  const out = document.getElementById('test-out');
+  out.textContent = '⏳ sending…';
+  try {
+    const body = {prompt, provider, max_tokens: 200};
+    if (auto_route) body.auto_route = auto_route;
+    const r = await fetch('/v1/chat', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      out.textContent = '❌ ' + (typeof d.detail === 'object' ? JSON.stringify(d.detail, null, 2) : (d.detail || JSON.stringify(d)));
+    } else {
+      let header = `[${d.provider} · ${d.model} · ${d.latency_ms}ms · in=${d.input_tokens} out=${d.output_tokens} · cache_read=${d.cache_read_input_tokens||0} · dialect=${d.tool_call_dialect}]`;
+      if (d.router_decision) {
+        const rd = d.router_decision;
+        header += `\n[ROUTE ${rd.role} → ${rd.tier} (~${rd.estimated_tokens} tok) via ${rd.router_provider}/${rd.router_model} in ${rd.router_latency_ms}ms${rd.fallback_used ? ' · FALLBACK' : ''}]`;
+      }
+      out.textContent = `${header}\n\n${d.text}`;
+    }
+  } catch (e) {
+    out.textContent = '❌ ' + e.message;
+  }
+  refresh(); refreshRouters(); loadCalls();
+}
+
+document.getElementById('port-badge').textContent = 'port ' + location.port;
+loadCaps().then(() => { refresh(); refreshRouters(); refreshEmbedders(); loadCalls(); });
+setInterval(() => { refresh(); refreshRouters(); refreshEmbedders(); loadCalls(); }, 5000);
+</script>
+</body>
+</html>

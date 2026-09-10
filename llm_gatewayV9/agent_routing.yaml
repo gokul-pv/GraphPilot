@@ -1,0 +1,26 @@
+# V8 agent → provider pinning. Map a skill name (the `agent` field on
+# /v1/chat) to a preferred provider name. Callers can still override
+# per-call by sending provider=... explicitly.
+#
+# Defaults below mirror the brief's design rationale. The Planner needs
+# the strongest reasoner available locally, the bulky text skills go to
+# Gemini for long-context comfort, and the cheap classifier-style
+# skills land on the small fast workers.
+#
+# Notes:
+# - Pinning to a provider that is currently in cooldown causes a single
+#   short wait (up to 30s) before the gateway falls back through the
+#   normal failover ladder. The pin is a preference, not a hard binding.
+# - Add a `tag: provider` line to introduce a new pin. No code change.
+
+planner: gemini
+researcher: gemini
+distiller: gemini
+summariser: gemini
+critic: groq
+formatter: gemini
+retriever: github
+sandbox_executor: github
+coder: gemini
+browser: gemini
+computer: gemini
