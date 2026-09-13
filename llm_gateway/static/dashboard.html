@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>LLM Gateway V7 · Dashboard</title>
+<title>LLM Gateway · Dashboard</title>
 <style>
   :root {
     --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9;
@@ -55,7 +55,7 @@
 </head>
 <body>
 <header>
-  <h1>⚡ LLM Gateway <span style="color:var(--accent)">V7</span> <span class="badge" id="port-badge"></span></h1>
+  <h1>⚡ LLM Gateway <span class="badge" id="port-badge"></span></h1>
   <nav>
     <a href="/">Dashboard</a>
     <a href="/help">Help / Free Keys</a>
@@ -66,7 +66,7 @@
   </nav>
 </header>
 <main>
-  <h2>Failover order</h2>
+  <h2>Failover order <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0; color:var(--yellow)">W&amp;B is metered — these bars track requests and tokens, not dollars</span></h2>
   <div id="order" class="order-list">loading…</div>
 
   <h2>Worker pool <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0; color:var(--muted)">cache+tool aware routing</span></h2>
@@ -76,11 +76,11 @@
   <div id="router-order" class="order-list" style="font-size:11px; margin-bottom:8px;">loading…</div>
   <div id="routers" class="grid"></div>
 
-  <h2>Embedders <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0; color:var(--accent)">V7 only — fixed 768-dim, Ollama → Gemini failover</span></h2>
+  <h2>Embedders <span style="float:right; font-size:11px; text-transform:none; letter-spacing:0; color:var(--accent)">fixed 768-dim, Ollama → Gemini failover</span></h2>
   <div id="embed-order" class="order-list" style="font-size:11px; margin-bottom:8px;">loading…</div>
   <div id="embedders" class="grid"></div>
 
-  <h2>Quick test (V7 features supported)</h2>
+  <h2>Quick test</h2>
   <div class="test-area">
     <select id="test-prov"><option value="">auto (failover)</option></select>
     <select id="test-route">

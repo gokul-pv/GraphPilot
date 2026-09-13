@@ -1,7 +1,7 @@
-"""Python client for LLM Gateway V8. Adds agent/session tagging, a
+"""Python client for the LLM gateway. Handles agent/session tagging, the
 batch endpoint, and exposes the gateway's `retries` count in the response.
 
-V8 behaviour summary (caller-visible):
+Caller-visible behaviour:
 
   - Pass `agent="planner"` (or any skill name) on a chat call to surface
     the calling skill in the gateway's cost-by-agent ledger and to apply
@@ -18,7 +18,11 @@ import os
 import httpx
 from typing import Any, Optional
 
-DEFAULT_URL = os.getenv("LLM_GATEWAY_V9_URL", "http://localhost:8109")
+DEFAULT_URL = (
+    os.getenv("LLM_GATEWAY_URL")
+    or os.getenv("LLM_GATEWAY_V9_URL")  # legacy name, still honoured
+    or f"http://localhost:{os.getenv('GATEWAY_PORT') or os.getenv('GATEWAY_V9_PORT') or '8109'}"
+)
 
 
 class LLM:

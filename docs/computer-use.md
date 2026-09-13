@@ -2,7 +2,7 @@
 
 [Repository overview](../README.md) · [DAG orchestration](dag-orchestrator.md) · [Browser automation](browser-automation.md)
 
-The computer skill controls applications on your Mac through `cua-driver`. The DAG planner can schedule it alongside research and other skills. Its own control loop reads the application, chooses actions, and returns the selected path, actions, turn count, and any extracted content. Model calls go through the [LLM gateway](../llm_gatewayV9/README.md).
+The computer skill controls applications on your Mac through `cua-driver`. The DAG planner can schedule it alongside research and other skills. Its own control loop reads the application, chooses actions, and returns the selected path, actions, turn count, and any extracted content. Model calls go through the [LLM gateway](../llm_gateway/README.md).
 
 [Watch the recorded Notes demo](https://www.youtube.com/watch?v=Zgq-_iuWEkM): the agent creates a note with its cursor overlay enabled. This recording is historical evidence; the desktop examples were not rerun for this documentation update.
 
@@ -22,7 +22,7 @@ Selection depends on the goal, application, and available UI information. Read-o
 
 Use macOS, Python 3.11+, and the [agent dependency setup](dag-orchestrator.md#setup). Install CuaDriver and its CLI at `~/.local/bin/cua-driver`, and grant Accessibility and Screen Recording permissions using the [desktop driver reference](desktop-driver.md).
 
-Configure the gateway on port 8109 with Gemini for the default text-control path and a vision-capable model for screenshots. Provider keys belong in the repository root `.env`; see the [gateway setup](../llm_gatewayV9/README.md#start-and-configure). Start the gateway separately, then start the driver daemon:
+Configure the gateway on port 8109 with Gemini for the default text-control path and a vision-capable model for screenshots. Provider keys belong in the repository root `.env`; see the [gateway setup](../llm_gateway/README.md#start-and-configure). Start the gateway separately, then start the driver daemon:
 
 ```bash
 open -n -g -a CuaDriver --args serve

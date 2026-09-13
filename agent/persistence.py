@@ -1,4 +1,4 @@
-"""Session 8 on-disk persistence for the growing graph.
+"""On-disk persistence for the growing graph.
 
 Lives in its own file because flow.py needs to stay under 350 lines.
 The two surfaces:
@@ -47,6 +47,29 @@ def _atomic_write(path: Path, data: bytes | str) -> None:
     os.replace(tmp, path)
 
 
+def graph_to_payload(graph_obj: nx.DiGraph) -> dict:
+    """JSON-safe node-link form of a live graph.
+
+    node_link_data accepts arbitrary node-attr dicts, but a running graph
+    holds Pydantic AgentResults under `result`, so those are dumped first and
+    tagged with `_result_typed` for read_graph to revive.
+
+    Shared by `write_graph` and by the console's event stream, which pushes
+    the same shape to clients so a browser renders exactly what resuming
+    from disk would reconstruct.
+    """
+    h = nx.DiGraph()
+    for n, d in graph_obj.nodes(data=True):
+        attrs = dict(d)
+        if isinstance(attrs.get("result"), AgentResult):
+            attrs["result"] = attrs["result"].model_dump(mode="json")
+            attrs["_result_typed"] = True
+        h.add_node(n, **attrs)
+    for u, v, d in graph_obj.edges(data=True):
+        h.add_edge(u, v, **d)
+    return nx.node_link_data(h, edges="edges")
+
+
 class SessionStore:
     """One on-disk session. Layout:
 
@@ -73,7 +96,7 @@ class SessionStore:
     @property
     def graph_path(self) -> Path:
         # P1 #6: graph is persisted as JSON via nx.node_link_data so the file
-        # is `cat`-able by students and the format survives a Python upgrade.
+        # is `cat`-able by hand and the format survives a Python upgrade.
         return self.dir / "graph.json"
 
     @property
@@ -95,18 +118,7 @@ class SessionStore:
         `result` is an AgentResult (Pydantic) — dump it to a dict so the
         JSON encoder is happy. Reviving on read restores the Pydantic shape.
         """
-        # node_link_data accepts arbitrary node-attr dicts; we just need
-        # every value to be JSON-serialisable.
-        h = nx.DiGraph()
-        for n, d in graph_obj.nodes(data=True):
-            attrs = dict(d)
-            if isinstance(attrs.get("result"), AgentResult):
-                attrs["result"] = attrs["result"].model_dump(mode="json")
-                attrs["_result_typed"] = True
-            h.add_node(n, **attrs)
-        for u, v, d in graph_obj.edges(data=True):
-            h.add_edge(u, v, **d)
-        payload = nx.node_link_data(h, edges="edges")
+        payload = graph_to_payload(graph_obj)
         _atomic_write(self.graph_path, json.dumps(payload, indent=2, default=str))
 
     def read_graph(self) -> nx.DiGraph | None:

@@ -248,7 +248,7 @@ def read_file(path: str) -> dict:
 def list_dir(path: str = ".") -> dict:
     """List a directory inside the sandbox. Example: list_dir(".")."""
     # NOTES_RUNS §6 (1): a list[dict] return was being rendered as one MCP
-    # TextContent per entry. After agent7.py's 300-char clip and decision.py's
+    # TextContent per entry. After the 300-char clip and decision.py's
     # downstream slicing, only the first 2-3 file dicts survived into the
     # Decision prompt, and Decision then declared the directory complete at
     # whatever it could see. Returning a single dict with `count` and a flat
@@ -312,7 +312,7 @@ def edit_file(path: str, find: str, replace: str, replace_all: bool = False) -> 
     }
 
 
-# ── document indexing (Session 7) ───────────────────────────────────────────
+# ── document indexing ───────────────────────────────────────────────────────
 
 def _read_for_index(path: str) -> tuple[str, str]:
     """Return (content, source_label) for an indexable file or artifact."""
@@ -323,8 +323,8 @@ def _read_for_index(path: str) -> tuple[str, str]:
 
 
 def _chunk_text(text: str, size: int = 400, overlap: int = 80) -> list[str]:
-    """Sliding-window chunking by word count. S7 default; semantic chunking
-    arrives in Session 8."""
+    """Sliding-window chunking by word count. Semantic chunking is not
+    implemented."""
     words = text.split()
     if not words:
         return []

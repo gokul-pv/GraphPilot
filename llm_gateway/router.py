@@ -1,18 +1,32 @@
-"""Capability-aware router. Same RPM/RPD bookkeeping as V1, but now it can
-skip providers that lack a requested capability (tools/reasoning/structured/caching)."""
+"""Capability-aware router. Tracks RPM/RPD/TPM per provider and skips ones
+that lack a requested capability (tools/reasoning/structured/caching/vision)."""
 from __future__ import annotations
-import time, asyncio
+import os, time, asyncio
 from collections import deque, defaultdict
 
 
 LIMITS = {
     "ollama":     {"rpm": 9999, "rpd": 9999999, "tpm": 99999999, "cooldown": 0,   "max_ctx": 32000},
-    "cerebras":   {"rpm": 30,   "rpd": 9999,    "tpm": 60000,    "cooldown": 2,   "max_ctx": 8000,    "tokens_per_day": 1_000_000},
     "groq":       {"rpm": 30,   "rpd": 1000,    "tpm": 6000,     "cooldown": 2,   "max_ctx": 100000},
     "nvidia":     {"rpm": 40,   "rpd": 9999,    "tpm": 100000,   "cooldown": 2,   "max_ctx": 100000},
     "gemini":     {"rpm": 15,   "rpd": 1000,    "tpm": 250000,   "cooldown": 4,   "max_ctx": 1000000},
     "openrouter": {"rpm": 20,   "rpd": 50,      "tpm": 99999999, "cooldown": 3,   "max_ctx": 100000},
-    "github":     {"rpm": 10,   "rpd": 50,      "tpm": 99999999, "cooldown": 6,   "max_ctx": 8000},
+    # W&B publishes no RPM/RPD/TPM numbers at all — only a monthly *spend* cap
+    # and an undocumented concurrency limit that surfaces as
+    # "429 Concurrency limit reached". Inventing throttles here would only make
+    # the router skip a provider that was actually available, so the quota
+    # dimensions are deliberately unbounded and the 429-backoff path in
+    # main._backoff_for does the work. `cooldown: 1` smooths bursts against the
+    # concurrency limit.
+    #
+    # This means cost, not rate, is W&B's real constraint — and this table has
+    # no way to express a spend cap. See "Known gaps" in README.md.
+    #
+    # max_ctx tracks WANDB_MODEL's context window (1,049k for GLM-5.3-Flash).
+    # Lower WANDB_MAX_CTX if you configure a smaller model, or the router will
+    # hand W&B prompts it must reject.
+    "wandb":      {"rpm": 9999, "rpd": 999999,  "tpm": 99999999, "cooldown": 1,
+                   "max_ctx": int(os.getenv("WANDB_MAX_CTX", "1000000"))},
 }
 
 SHORTCUTS = {
@@ -20,9 +34,8 @@ SHORTCUTS = {
     "n": "nvidia", "nv": "nvidia", "nvidia": "nvidia",
     "o": "ollama", "oll": "ollama", "ollama": "ollama",
     "gr": "groq", "groq": "groq",
-    "c": "cerebras", "cer": "cerebras", "cerebras": "cerebras",
     "or": "openrouter", "opr": "openrouter", "openrouter": "openrouter",
-    "gh": "github", "ghb": "github", "github": "github",
+    "w": "wandb", "wb": "wandb", "wandb": "wandb",
 }
 
 
@@ -154,12 +167,12 @@ class Router:
 
 
 # -----------------------------------------------------------------------------
-# V3 Router pool — separate failover ring for routing-decision LLM calls.
+# Router pool — separate failover ring for routing-decision LLM calls.
 # Same rate-state machinery, separate state dict so router quotas never compete
 # with worker quotas (provider keys are shared but providers meter per-model).
 # -----------------------------------------------------------------------------
 
-DEFAULT_ROUTER_ORDER = ["cerebras", "groq", "nvidia", "github"]
+DEFAULT_ROUTER_ORDER = ["wandb", "groq", "nvidia"]
 
 
 class RouterPool:

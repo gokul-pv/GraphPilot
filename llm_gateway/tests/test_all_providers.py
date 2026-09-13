@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Per-provider matrix test for llm_gatewayV2.
+"""Per-provider matrix test.
 
 Tests A (basic), B (tools), C (structured), D (caching), E (reasoning)
-against each of the 7 providers. Prints a matrix at the end.
+against each configured provider. Prints a matrix at the end.
 
-Assumes V2 is running at http://localhost:8100 (env LLM_GATEWAY_V2_URL to override).
+Makes real, billed calls against every provider — W&B is metered. Assumes the
+gateway is already running; set LLM_GATEWAY_URL to point somewhere else.
+
+    uv run python tests/test_all_providers.py
 """
 from __future__ import annotations
 import os, sys, json, time, httpx
 
-URL = os.getenv("LLM_GATEWAY_V2_URL", "http://localhost:8100")
-PROVIDERS = ["o", "g", "n", "gr", "c", "or", "gh"]
-PROVIDER_NAMES = {"o":"ollama","g":"gemini","n":"nvidia","gr":"groq","c":"cerebras","or":"openrouter","gh":"github"}
+URL = (os.getenv("LLM_GATEWAY_URL")
+       or f"http://localhost:{os.getenv('GATEWAY_PORT', '8109')}")
+PROVIDERS = ["o", "g", "n", "gr", "w", "or"]
+PROVIDER_NAMES = {"o":"ollama","g":"gemini","n":"nvidia","gr":"groq","w":"wandb","or":"openrouter"}
 
 ADD_TOOL = {
     "name": "add",
@@ -178,8 +182,8 @@ def main():
     import concurrent.futures as cf
     matrix = {}
     all_details = {}
-    print("Running all 7 providers in parallel...\n", flush=True)
-    with cf.ThreadPoolExecutor(max_workers=7) as ex:
+    print(f"Running all {len(PROVIDERS)} providers in parallel...\n", flush=True)
+    with cf.ThreadPoolExecutor(max_workers=len(PROVIDERS)) as ex:
         futs = {ex.submit(run_provider, p): p for p in PROVIDERS}
         for fut in cf.as_completed(futs):
             name, row, det = fut.result()

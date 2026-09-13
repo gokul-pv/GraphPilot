@@ -9,7 +9,7 @@ The orchestrator turns a request into a dependency graph of skills. It uses Netw
 Use Python 3.11+ and `uv`. Run these commands from the repository root to install the gateway and agent dependencies in their separate environments:
 
 ```bash
-cd llm_gatewayV9
+cd llm_gateway
 uv sync
 cd ../agent
 uv sync
@@ -52,7 +52,7 @@ uv run python replay.py SESSION_ID
 
 Resume retains completed work and resets nodes saved as running to pending. An interrupted browser or desktop action may therefore run again. Replay is a terminal viewer: Enter advances, `p` expands the stored prompt, `o` expands output, and `q` exits.
 
-Memory uses FAISS search with keyword fallback. Hits are loaded at session start and shared with the standard skill prompts. Keep embedding configuration consistent when reusing stored memory; see the [gateway guide](../llm_gatewayV9/README.md#embeddings).
+Memory uses FAISS search with keyword fallback. Hits are loaded at session start and shared with the standard skill prompts. Keep embedding configuration consistent when reusing stored memory; see the [gateway guide](../llm_gateway/README.md#embeddings).
 
 ## Skills and extension points
 

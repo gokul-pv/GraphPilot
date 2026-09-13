@@ -1,10 +1,10 @@
-"""S9 Browser skill — set-of-marks (Layer 3) driver.
+"""Browser skill — set-of-marks (Layer 3) driver.
 
-Framework-free: Playwright + Pillow + httpx → llm_gatewayV9 /v1/vision.
+Framework-free: Playwright + Pillow + httpx → the gateway's /v1/vision.
 No LangChain, no browser-use dependency. See ../README.md for the layered
 cascade (extract / a11y / vision) this slots into.
 """
-from .client import GatewayResult, V9Client, V9VisionClient, VisionResult
+from .client import GatewayResult, GatewayClient, V9VisionClient, VisionResult
 from .dom import Element, PageSnapshot, enumerate_interactives
 from .driver import (
     ACTION_SCHEMA,
@@ -34,7 +34,7 @@ __all__ = [
     "SYSTEM_PROMPT",
     "SYSTEM_PROMPT_A11Y",
     "SYSTEM_PROMPT_VISION",
-    "V9Client",
+    "GatewayClient",
     "V9VisionClient",
     "VisionResult",
     "annotate",

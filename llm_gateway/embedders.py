@@ -1,4 +1,4 @@
-"""Embedding providers for llm_gatewayV7.
+"""Embedding providers for the LLM gateway.
 
 Two concrete providers, both async, both returning the same dict shape:
     {"embedding": list[float], "model": str, "dim": int}

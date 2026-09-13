@@ -19,12 +19,12 @@ from cache import GeminiCache
 from schemas import ChatRequest, ChatResponse, ToolCall, RouterDecision, EmbedRequest, EmbedResponse, BatchChatRequest, VisionRequest, ResponseFormat
 import embedders as E
 
-DEFAULT_ORDER = ["ollama", "gemini", "nvidia", "groq", "cerebras", "openrouter", "github"]
+DEFAULT_ORDER = ["gemini", "wandb", "groq", "openrouter", "nvidia", "ollama"]
 ORDER = [x.strip() for x in os.getenv("LLM_ORDER", ",".join(DEFAULT_ORDER)).split(",") if x.strip()]
 ROUTER_ORDER = [x.strip() for x in os.getenv("ROUTER_ORDER", ",".join(DEFAULT_ROUTER_ORDER)).split(",") if x.strip()]
-PORT = int(os.getenv("GATEWAY_V9_PORT", "8109"))
+PORT = int(os.getenv("GATEWAY_PORT") or os.getenv("GATEWAY_V9_PORT") or "8109")
 
-# V8: agent_routing.yaml maps `agent="<name>"` to a preferred provider name.
+# agent_routing.yaml maps `agent="<name>"` to a preferred provider name.
 # The caller's explicit `provider=` still wins. Loaded once at import; the
 # file is small enough (~10 lines) that hot-reloading would be over-engineering.
 import yaml
@@ -34,14 +34,15 @@ if _AGENT_ROUTING_PATH.exists():
     try:
         AGENT_ROUTING = yaml.safe_load(_AGENT_ROUTING_PATH.read_text()) or {}
     except Exception as e:  # pragma: no cover - logged then ignored
-        print(f"[v8] failed to parse agent_routing.yaml: {e!r}")
+        print(f"[gateway] failed to parse agent_routing.yaml: {e!r}")
         AGENT_ROUTING = {}
 
-# Tier -> worker failover order. TINY prefers small fast workers; LARGE prefers
-# long-context Gemini; HUGE is rejected (Summarizer Agent will live in V7).
+# Tier -> worker failover order. TINY shifts the cheap fast workers ahead of
+# Gemini; LARGE keeps the default ranking for long-context comfort. HUGE is
+# rejected outright — there is no summarisation pre-pass.
 TIER_TO_ORDER = {
-    "TINY":  ["github", "openrouter", "groq", "nvidia", "cerebras", "gemini", "ollama"],
-    "LARGE": ["gemini", "groq", "nvidia", "cerebras", "github", "openrouter", "ollama"],
+    "TINY":  ["wandb", "groq", "openrouter", "nvidia", "gemini", "ollama"],
+    "LARGE": ["gemini", "wandb", "groq", "openrouter", "nvidia", "ollama"],
 }
 
 # Router envelope: cap the sample at ~800 chars (first 400 + last 400).
@@ -202,7 +203,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="LLM Gateway V9", lifespan=lifespan)
+app = FastAPI(title="LLM Gateway", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 
 
@@ -231,7 +232,7 @@ def _est_tokens(messages, system_blocks, max_tokens):
         c = m.get("content", "")
         if isinstance(c, list):
             chars += len(P._extract_text_blocks(c))
-            # V9: image blocks count as ~258 tokens each on Gemini, ~85 base
+            # image blocks count as ~258 tokens each on Gemini, ~85 base
             # tokens on OpenAI; use 300 chars per image as a coarse estimate
             # (gets multiplied by ~0.25 in chars→tokens below).
             chars += 1200 * sum(1 for b in c if isinstance(b, dict) and b.get("type") in ("image_url", "image", "input_image"))
@@ -250,6 +251,10 @@ def _backoff_for(err: Exception, has_model_override: bool = False):
     status = getattr(err, "status", None)
     if status == 429:
         if "queue" in msg: return 15, "server queue full"
+        # A concurrency reject (W&B: "Concurrency limit reached for requests")
+        # is transient — too many in flight right now, not quota exhausted.
+        # Clears in seconds, so don't sit out the 30s default.
+        if "concurrency" in msg: return 5, "concurrency limit"
         if "quota" in msg or "rpm" in msg or "per minute" in msg: return 60, "RPM quota burned"
         if "rpd" in msg or "per day" in msg or "daily" in msg: return 3600, "RPD quota burned"
         return 30, "rate limited"
@@ -276,7 +281,7 @@ def _required_caps(req: ChatRequest):
     if req.tools: caps.append("tools")
     if req.reasoning and req.reasoning != "off": caps.append("reasoning")
     if req.response_format: caps.append("structured")
-    # V9: auto-detect multimodal content. If any message carries image blocks,
+    # auto-detect multimodal content. If any message carries image blocks,
     # only providers whose configured model supports vision are eligible.
     if req.messages:
         for m in req.messages:
@@ -287,7 +292,7 @@ def _required_caps(req: ChatRequest):
 
 
 async def _resolve_image_urls(messages: list[dict]) -> list[dict]:
-    """V9: fetch any http(s) image URLs in message content and inline them as
+    """fetch any http(s) image URLs in message content and inline them as
     data: URLs. Providers downstream only ever see data: URLs, which keeps
     Gemini/Ollama translation paths simple. Mutates a copy; original is intact.
     """
@@ -297,7 +302,7 @@ async def _resolve_image_urls(messages: list[dict]) -> list[dict]:
     async def _fetch_to_data_url(url: str) -> str:
         # A real-browser UA — Wikimedia and many CDNs refuse python-default UAs.
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; LLMGatewayV9/0.1; +image-resolver)",
+            "User-Agent": "Mozilla/5.0 (compatible; LLMGateway/0.1; +image-resolver)",
             "Accept": "image/*,*/*;q=0.8",
         }
         async with _httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as c:
@@ -351,7 +356,7 @@ async def chat(req: ChatRequest):
     router = app.state.router
     router_pool = app.state.router_pool
     messages = _normalize_messages(req)
-    # V9: pre-resolve any http(s) image URLs to data: URLs once, centrally.
+    # pre-resolve any http(s) image URLs to data: URLs once, centrally.
     # Cheap when there are no images (function is a pass-through).
     if any(P._content_has_image(m.get("content")) for m in messages):
         messages = await _resolve_image_urls(messages)
@@ -365,7 +370,7 @@ async def chat(req: ChatRequest):
     explicit_override = bool(req.provider)
     required_caps = _required_caps(req)
 
-    # V8: if the caller tagged the request with an agent name and did not
+    # if the caller tagged the request with an agent name and did not
     # pin a provider explicitly, apply agent_routing.yaml's preferred provider.
     # This mutates req.provider so the rest of the function (router-pick,
     # candidate-narrowing, single-candidate-wait) sees the pin.
@@ -375,14 +380,14 @@ async def chat(req: ChatRequest):
             req.provider = pinned
             explicit_override = True
 
-    # V8: retry-on-5xx with `retries` surfaced in the response. The
+    # retry-on-5xx with `retries` surfaced in the response. The
     # per-provider failover loop below already rotates providers on
     # ProviderError; this counter exists for the single-provider retry case
     # (mostly meaningful when `provider=` is explicit). One retry, backoff
     # capped at 2s as the spec says.
     retries = 0
 
-    # V3: auto_route runs a router-LLM classifier first and uses tier-specific
+    # auto_route runs a router-LLM classifier first and uses tier-specific
     # failover order. Explicit `provider` overrides routing (caller knows best).
     router_decision: Optional[RouterDecision] = None
     if req.auto_route and not req.provider:
@@ -392,8 +397,8 @@ async def chat(req: ChatRequest):
                 503,
                 {
                     "error": "input exceeds 8000 tokens",
-                    "hint": "Use the Summarizer Agent (V7, not yet implemented). "
-                            "For now, chunk the input or set provider=g explicitly to try Gemini anyway.",
+                    "hint": "There is no summarisation pre-pass. Chunk the input, "
+                            "or set provider=g explicitly to try Gemini anyway.",
                     "router_decision": router_decision.model_dump(),
                 },
             )
@@ -472,7 +477,7 @@ async def chat(req: ChatRequest):
                         yield f"data: {json.dumps({'error': str(e)[:300]})}\n\n"
                 return StreamingResponse(gen(), media_type="text/event-stream")
 
-            # V8: one same-provider retry on transient 5xx / timeout before
+            # one same-provider retry on transient 5xx / timeout before
             # we fall through to the failover loop. Exponential backoff capped
             # at 2s, exactly as the spec says. `retries` is surfaced in the
             # response so the orchestrator's replay can show it.
@@ -613,7 +618,7 @@ async def chat(req: ChatRequest):
     raise HTTPException(503, f"all providers unavailable. attempts: {all_attempts}. last_error: {last_err}")
 
 
-# ── V8 additions: batch endpoint and cost-by-agent ────────────────────────────
+# ── Batch endpoint and cost-by-agent ────────────────────────────────────────
 
 @app.post("/v1/chat/batch")
 async def chat_batch(req: BatchChatRequest):
@@ -640,7 +645,7 @@ async def chat_batch(req: BatchChatRequest):
 
 @app.post("/v1/vision")
 async def vision(req: VisionRequest):
-    """V9: single-image vision call. Thin shim over /v1/chat that:
+    """single-image vision call. Thin shim over /v1/chat that:
       - packs `image` + `prompt` into a multimodal user message
       - forces routing to a vision-capable provider (via `vision` cap)
       - optionally enforces a JSON schema for structured output
@@ -675,9 +680,10 @@ async def cost_by_agent(session: Optional[str] = None, agent: Optional[str] = No
     without either, the calendar day. Used by the orchestrator's replay step
     to show how much each skill cost.
 
-    V9: each row now carries a `dollars` field derived from `pricing.py`'s
-    table.  $0 for free-tier providers (the course default); accurate-ish
-    for paid providers.  Tokens remain the headline number.
+    Each row carries a `dollars` field derived from `pricing.py`'s table: $0
+    for the free-tier providers, real money for W&B. Tokens remain the headline
+    number, but this is the only spend visibility the gateway has — nothing
+    here caps it. See "Known gaps" in README.md.
     """
     import pricing as _pricing
     raw = db.by_agent(session=session)
@@ -697,7 +703,7 @@ async def cost_by_agent(session: Optional[str] = None, agent: Optional[str] = No
 
 @app.post("/v1/embed")
 async def embed(req: EmbedRequest):
-    """Single new V7 endpoint. Failover ring runs Ollama → configured fallback.
+    """Embedding endpoint. Failover ring runs Ollama → configured fallback.
     `provider` pins the choice (returns 502 on failure with no fallback).
     Rejects inputs over MAX_INPUT_CHARS with 413 — caller must chunk."""
     embedders = app.state.embedders
@@ -811,7 +817,7 @@ async def status():
 
 @app.get("/v1/routers")
 async def routers():
-    """V3: router pool — separate from the worker pool. Shows which router LLMs
+    """router pool — separate from the worker pool. Shows which router LLMs
     are wired, the failover order, and live rate-state."""
     rp = app.state.router_pool
     return {

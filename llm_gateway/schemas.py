@@ -1,4 +1,4 @@
-"""Pydantic v2 request/response models for llm_gatewayV9."""
+"""Pydantic v2 request/response models for the LLM gateway."""
 from typing import Any, Literal, Optional, Union
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -46,19 +46,19 @@ class ChatRequest(BaseModel):
     temperature: float = 0.7
     stream: bool = False
 
-    # New in V2:
+    #
     tools: Optional[list[ToolDef]] = None
     tool_choice: Optional[Union[str, dict[str, Any]]] = None  # "auto" | "none" | {name}
     cache_system: Optional[bool] = None
     reasoning: Optional[Literal["off", "low", "medium", "high"]] = None
     response_format: Optional[ResponseFormat] = None
 
-    # New in V3: when set, the gateway runs a router LLM first to pick a worker tier.
+    # when set, the gateway runs a router LLM first to pick a worker tier.
     # Role labels track which cognitive layer is asking. The worker is picked
     # from a tier-to-order table; router never sees system, tools, schemas.
     auto_route: Optional[Literal["perception", "memory", "decision"]] = None
 
-    # New in V8: agent tag (which skill is calling) and session tag (which
+    # agent tag (which skill is calling) and session tag (which
     # flow-run). Used for cost-by-agent rollups and provider pinning via
     # agent_routing.yaml. Both are free-form strings; the gateway logs them
     # but does not validate them against any whitelist.
@@ -113,21 +113,21 @@ class ChatResponse(BaseModel):
     reasoning_applied: bool = False
     parsed: Optional[dict[str, Any]] = None  # set when response_format used
     attempted: list[dict[str, Any]] = Field(default_factory=list)
-    # New in V3: present only when auto_route was used
+    # present only when auto_route was used
     router_decision: Optional[RouterDecision] = None
-    # New in V8: how many automatic retries fired before success (or final fail).
+    # how many automatic retries fired before success (or final fail).
     retries: int = 0
 
 
 class BatchChatRequest(BaseModel):
-    """V8 batch endpoint. The gateway dispatches the inner calls with
+    """Batch endpoint. The gateway dispatches the inner calls with
     bounded parallelism so providers' rate limits are respected centrally."""
     calls: list[ChatRequest]
     max_concurrency: int = 4
 
 
 class VisionRequest(BaseModel):
-    """V9: typed shim for single-image vision calls. Lower-ceremony than
+    """typed shim for single-image vision calls. Lower-ceremony than
     /v1/chat for the set-of-marks loop — callers send one image, one prompt,
     and (optionally) a JSON schema for typed output, and the gateway forces
     routing to a vision-capable provider.

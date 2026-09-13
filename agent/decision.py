@@ -126,7 +126,7 @@ def _format_history(history: list[dict]) -> str:
             lines.append(f"  - iter {h.get('iter')}: ANSWER → {(h.get('text') or '')[:140]}")
         elif kind == "action":
             tool = h.get("tool")
-            # NOTES_RUNS §6 (1): agent7.py already clips result_descriptor at
+            # The caller already clips result_descriptor at
             # 300 chars; clipping again at 140 here was hiding the tail of
             # multi-entry tool outputs like list_dir's file list, and Decision
             # was confidently treating partial views as complete. Match the

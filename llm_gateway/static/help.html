@@ -42,7 +42,7 @@
 </header>
 <main>
 
-<p>This service routes LLM calls across <strong>seven free providers</strong>, with automatic failover, rate-limit tracking, persistent logging, and a manual override. Below: how to use it, what each provider offers, and how to get free keys.</p>
+<p>This service routes LLM calls across <strong>six providers</strong> — five free-tier or local, plus metered W&amp;B Inference — with automatic failover, rate-limit tracking, persistent logging, and a manual override. Below: how to use it, what each provider offers, and how to get keys.</p>
 
 <h2>Using the gateway</h2>
 
@@ -52,7 +52,7 @@
 # one-shot
 print(ask("Explain transformers in 3 lines"))
 
-# explicit provider (shortcut keys: g, n, o, gr, c, or, gh)
+# explicit provider (shortcut keys: g, n, o, gr, w, or)
 print(ask("hi", provider="gr"))   # groq
 print(ask("hi", provider="g"))    # gemini
 
@@ -66,7 +66,7 @@ for chunk in llm.stream("count to 5"):
     print(chunk, end="", flush=True)</code></pre>
 
 <h3>HTTP (OpenAI-style)</h3>
-<pre><code>curl http://localhost:8099/v1/chat \
+<pre><code>curl http://localhost:8109/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"prompt": "hello", "provider": "g", "max_tokens": 128}'</code></pre>
 
@@ -77,9 +77,8 @@ for chunk in llm.stream("count to 5"):
   <tr><td><code>n</code></td><td>NVIDIA NIM</td><td><code>nv</code>, <code>nvidia</code></td></tr>
   <tr><td><code>o</code></td><td>Ollama (local)</td><td><code>oll</code>, <code>ollama</code></td></tr>
   <tr><td><code>gr</code></td><td>Groq</td><td><code>groq</code></td></tr>
-  <tr><td><code>c</code></td><td>Cerebras</td><td><code>cer</code>, <code>cerebras</code></td></tr>
+  <tr><td><code>w</code></td><td>W&amp;B Inference</td><td><code>wb</code>, <code>wandb</code></td></tr>
   <tr><td><code>or</code></td><td>OpenRouter</td><td><code>opr</code>, <code>openrouter</code></td></tr>
-  <tr><td><code>gh</code></td><td>GitHub Models</td><td><code>ghb</code>, <code>github</code></td></tr>
 </table>
 <p>Without <code>provider</code>, the gateway tries them in failover order (configurable via <code>LLM_ORDER</code> in <code>.env</code>). Explicit provider = no failover (errors surface immediately).</p>
 
@@ -130,18 +129,30 @@ for chunk in llm.stream("count to 5"):
   <li>No credit card required</li>
 </ol>
 
-<h3>4. Cerebras <span class="badge">2000+ tok/s</span></h3>
+<h3>4. W&amp;B Inference <span class="badge">metered</span></h3>
 <ul>
-  <li>4 models: <code>zai-glm-4.7</code> <span class="star">★ default</span>, <code>qwen-3-235b-a22b-instruct-2507</code>, <code>gpt-oss-120b</code>, <code>llama3.1-8b</code></li>
-  <li>Free tier: <strong>30 RPM · 60K TPM · 1,000,000 tokens/day</strong> <span class="ok">(most generous daily token cap)</span></li>
-  <li><span class="warn">Gotcha: 8,192 token context cap on free tier</span> across all models</li>
+  <li>Models: <code>zai-org/GLM-5.3-Flash</code> <span class="star">★ default</span> (1M ctx, vision),
+    <code>openai/gpt-oss-20b</code> <span class="star">★ router default</span>,
+    <code>openai/gpt-oss-120b</code>, <code>deepseek-ai/DeepSeek-V4-Pro-0813</code> (1M ctx),
+    <code>moonshotai/Kimi-K2.7-Code</code>, <code>Qwen/Qwen3.8-27B</code>,
+    <code>meta-llama/Llama-3.3-70B-Instruct</code></li>
+  <li><span class="warn">The only paid provider in the ring.</span> GLM-5.3-Flash bills
+    $0.15 / $0.50 per Mtok (in / out); gpt-oss-20b is $0.03 / $0.13</li>
+  <li>No published RPM/TPM/RPD. The only documented limits are a monthly
+    <strong>spend cap</strong> (default $100/mo on Free, $6,000/mo on Pro) and an
+    undocumented concurrency limit returning <code>429 Concurrency limit reached</code></li>
+  <li><span class="warn">The gateway does not cap spend</span> — it throttles requests and
+    tokens only. Watch <code>/v1/cost/by_agent</code></li>
+  <li>Requires an <code>OpenAI-Project: &lt;team&gt;/&lt;project&gt;</code> header, set via
+    <code>WANDB_PROJECT</code></li>
 </ul>
 <p><b>Get a key:</b></p>
 <ol>
-  <li>Go to <a href="https://cloud.cerebras.ai" target="_blank">cloud.cerebras.ai</a></li>
-  <li>Sign in with Google or GitHub</li>
-  <li><strong>API Keys</strong> → <strong>Create Key</strong> → copy the <code>csk-…</code> key</li>
-  <li>No credit card required</li>
+  <li>Go to <a href="https://wandb.ai/authorize" target="_blank">wandb.ai/authorize</a></li>
+  <li>Sign in with Google, GitHub, or email</li>
+  <li>Copy the API key shown</li>
+  <li>Note your team and project names — they form <code>WANDB_PROJECT</code> as
+    <code>&lt;team&gt;/&lt;project&gt;</code></li>
 </ol>
 
 <h3>5. OpenRouter <span class="badge">one key, many models</span></h3>
@@ -164,32 +175,7 @@ for chunk in llm.stream("count to 5"):
   <li><strong>Keys</strong> → <strong>Create Key</strong> → copy the <code>sk-or-…</code> key</li>
 </ol>
 
-<h3>6. GitHub Models <span class="badge">includes GPT-5</span></h3>
-<ul>
-  <li><strong>43 frontier models</strong>, including:
-    <code>openai/gpt-5</code>, <code>gpt-5-mini</code>, <code>gpt-5-nano</code>,
-    <code>openai/gpt-4.1</code> (1M ctx), <code>gpt-4.1-mini</code> <span class="star">★ default</span>,
-    <code>openai/o1</code>, <code>o3</code>, <code>o3-mini</code>, <code>o4-mini</code>,
-    <code>meta/meta-llama-3.1-405b-instruct</code>,
-    <code>meta/llama-4-scout-17b-16e-instruct</code> (10M ctx!),
-    <code>deepseek/deepseek-r1</code>, <code>deepseek-v3-0324</code>,
-    <code>xai/grok-3</code>, <code>microsoft/phi-4-reasoning</code>, <code>mistral-ai/codestral-2501</code>
-  </li>
-  <li><span class="warn">Free tier per-request cap: 8K input / 4K output tokens</span></li>
-  <li>Low-tier models (4.1-mini, 4o-mini, phi-4): <strong>15 RPM · 150 RPD · 5 concurrent</strong></li>
-  <li>High-tier (4.1, 4o, llama-3.3-70b, llama-3.1-405b): <strong>10 RPM · 50 RPD · 2 concurrent</strong></li>
-  <li>Custom-tier (GPT-5, o1, o3, DeepSeek-R1, Grok): typically ~8 RPM, ~25 RPD <span class="warn">(very tight)</span></li>
-</ul>
-<p><b>Get a key:</b></p>
-<ol>
-  <li>Go to <a href="https://github.com/marketplace/models" target="_blank">github.com/marketplace/models</a></li>
-  <li>Sign in with your GitHub account</li>
-  <li>Pick any model → <strong>Use this model</strong> → <strong>Get API key</strong></li>
-  <li>This generates a <strong>Personal Access Token</strong> (no scopes required for Models)</li>
-  <li>Or via Settings: <strong>Developer settings</strong> → <strong>Personal access tokens (fine-grained)</strong> → Generate</li>
-</ol>
-
-<h3>7. Ollama (local)</h3>
+<h3>6. Ollama (local)</h3>
 <ul>
   <li>Runs on your machine — zero rate limits, zero cost, 0ms cooldown</li>
   <li>Default: <code>gemma4:31b</code></li>
@@ -206,12 +192,11 @@ for chunk in llm.stream("count to 5"):
 <table>
   <tr><th>Provider</th><th>Default model</th><th>RPM</th><th>RPD</th><th>Other limits</th></tr>
   <tr><td>Ollama</td><td>gemma4:31b</td><td>—</td><td>—</td><td>local, unlimited</td></tr>
-  <tr><td>Cerebras</td><td>zai-glm-4.7</td><td>30</td><td>—</td><td>1M tokens/day · 8K ctx cap</td></tr>
   <tr><td>Groq</td><td>llama-3.3-70b-versatile</td><td>30</td><td>1,000</td><td>6K TPM · 500K tok/day</td></tr>
   <tr><td>NVIDIA NIM</td><td>deepseek-ai/deepseek-v3.2</td><td>40</td><td>—</td><td>1K credits on signup</td></tr>
   <tr><td>Gemini</td><td>gemini-3.1-flash-lite-preview</td><td>15</td><td>1,000</td><td>250K TPM · 1M ctx</td></tr>
   <tr><td>OpenRouter</td><td>nvidia/nemotron-3-super-120b-a12b:free</td><td>20</td><td>50</td><td>per model · pooled</td></tr>
-  <tr><td>GitHub Models</td><td>openai/gpt-4.1-mini</td><td>10–15</td><td>50–150</td><td>8K in / 4K out per req</td></tr>
+  <tr><td>W&amp;B Inference</td><td>zai-org/GLM-5.3-Flash</td><td>none published</td><td>none published</td><td><span class="warn">metered — capped by spend, not rate</span></td></tr>
 </table>
 
 <h2>Configuration (.env)</h2>
@@ -225,20 +210,19 @@ NVIDIA_MODEL=deepseek-ai/deepseek-v3.2
 GROQ_API_KEY=...
 GROQ_MODEL=llama-3.3-70b-versatile
 
-CEREBRAS_API_KEY=...
-CEREBRAS_MODEL=zai-glm-4.7
-
 OPEN_ROUTER_API_KEY=...
 OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
 
-GITHUB_ACCESS_TOKEN=...
-GITHUB_MODEL=openai/gpt-4.1-mini
+WANDB_API_KEY=...
+WANDB_PROJECT=your-team/your-project
+WANDB_MODEL=zai-org/GLM-5.3-Flash
+ROUTER_WANDB_MODEL=openai/gpt-oss-20b
 
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=gemma4:31b
 
-LLM_ORDER=ollama,gemini,nvidia,groq,cerebras,openrouter,github
-GATEWAY_PORT=8099</code></pre>
+LLM_ORDER=gemini,wandb,groq,openrouter,nvidia,ollama
+GATEWAY_PORT=8109</code></pre>
 
 <h2>HTTP API reference</h2>
 <table>

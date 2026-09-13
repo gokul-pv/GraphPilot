@@ -1,12 +1,12 @@
-"""Session 9: the Browser skill — cascade wrapper around the layered drivers.
+"""The Browser skill — cascade wrapper around the layered drivers.
 
 The wrapper translates the orchestrator's NodeSpec contract into the
 typed BrowserOutput / AgentResult contract, and owns the layer cascade:
 
     Layer 1  — HTML extract via trafilatura (no LLM)
     Layer 2a — deterministic selectors (only if metadata.selectors is given)
-    Layer 2b — A11yDriver        (text-only, V9 /v1/chat)
-    Layer 3  — SetOfMarksDriver  (vision, V9 /v1/vision)
+    Layer 2b — A11yDriver        (text-only, /v1/chat)
+    Layer 3  — SetOfMarksDriver  (vision, /v1/vision)
 
 Escalation rule: a layer escalates when its output is empty or evidently
 insufficient. The skill stops at the first layer that produces a useful
@@ -21,7 +21,7 @@ and re-invokes the Planner.
 
 This file is the ONLY new code in the integration. The four files
 already on disk (client.py, dom.py, highlight.py, driver.py) are
-ported verbatim from S9SharedCode/code/browser/ and untouched.
+unchanged since it was first written.
 """
 from __future__ import annotations
 
@@ -35,8 +35,9 @@ import trafilatura
 from playwright.async_api import async_playwright
 
 from schemas import AgentResult, BrowserOutput, NodeSpec
+from settings import GATEWAY_URL
 
-from .client import V9Client
+from .client import GatewayClient
 from .driver import A11yDriver, DriverConfig, DriverResult, SetOfMarksDriver
 
 
@@ -83,7 +84,7 @@ def detect_gateway_block(html: str) -> str | None:
 
 # ── Layer 1: pure-HTTP extraction ────────────────────────────────────────────
 _UA = (
-    "Mozilla/5.0 (compatible; S9-Browser-Skill/0.1; +llm_gatewayV9)"
+    "Mozilla/5.0 (compatible; GraphPilot-Browser/0.1)"
 )
 
 
@@ -122,7 +123,7 @@ def _is_useful_extract(content: str, goal: str) -> bool:
 class BrowserSkill:
     NAME = "browser"
 
-    def __init__(self, *, gateway_url: str = "http://localhost:8109",
+    def __init__(self, *, gateway_url: str = GATEWAY_URL,
                  agent_tag: str = "browser",
                  a11y_provider_pin: str | None = "gemini",
                  vision_provider_pin: str | None = None,
@@ -139,7 +140,7 @@ class BrowserSkill:
         self.max_steps_a11y = max_steps_a11y
         self.max_steps_vision = max_steps_vision
         self.wall_clock_s = wall_clock_s
-        # Forwarded to V9 so the gateway ledger can attribute each call to
+        # Forwarded to the gateway so the gateway ledger can attribute each call to
         # the orchestrator session that drove it.
         self.session = session
 
@@ -156,7 +157,7 @@ class BrowserSkill:
             return self._pack_error("", goal, "interaction_failed",
                                     "no url given (metadata.url or inputs[0])")
         t0 = time.time()
-        client = V9Client(base_url=self.gateway_url, agent=self.agent_tag,
+        client = GatewayClient(base_url=self.gateway_url, agent=self.agent_tag,
                           session=self.session)
         artifacts_dir = (
             str(self.artifacts_root / f"browser_{int(t0)}")

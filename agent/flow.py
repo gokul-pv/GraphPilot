@@ -1,4 +1,4 @@
-"""Session 8 — growing-graph orchestrator.
+"""Growing-graph orchestrator.
 
 The agent's loop becomes a NetworkX DiGraph. Each node is a skill; edges
 carry typed AgentResult payloads. The graph GROWS at runtime via five
@@ -6,7 +6,7 @@ actors: the Planner's seed plan, dynamic successors from any skill,
 static `internal_successors` from the yaml, Critic auto-insertion on
 edges out of `critic:true` skills, and Planner re-invocation on node
 failure (gated by `recovery.plan_recovery`). Perception's tool-blindness
-contract from S7 is preserved — Planner names skills, never tools.
+contract is preserved — Planner names skills, never tools.
 
 Persistence lives in persistence.py; skill execution in skills.py;
 failure-policy in recovery.py; sandbox in sandbox.py.
@@ -19,17 +19,26 @@ import json
 import sys
 import time
 import uuid
+from typing import Callable
 
 import networkx as nx
 
 import memory as memory_svc
 from gateway import ensure_gateway
-from persistence import SessionStore
+from persistence import SessionStore, graph_to_payload
 from recovery import handle_critic_verdict, plan_recovery
 from schemas import AgentResult, NodeState
 from skills import SkillRegistry, run_skill
 
 MAX_NODES = 60  # hard cap so a Planner loop cannot grow forever
+
+
+def _no_emit(event_type: str, **payload) -> None:
+    """Default event sink: drop everything.
+
+    Keeps the CLI path free of any console machinery — `flow.py "query"`
+    behaves exactly as it did before the event bus existed.
+    """
 
 
 # ── Graph ────────────────────────────────────────────────────────────────────
@@ -190,8 +199,10 @@ class Executor:
         self.registry = registry or SkillRegistry()
 
     async def run(self, query: str, *, session_id: str | None = None,
-                  resume: bool = False) -> str:
-        sid = session_id or f"s8-{uuid.uuid4().hex[:8]}"
+                  resume: bool = False,
+                  emit: Callable[..., None] | None = None) -> str:
+        emit = emit or _no_emit
+        sid = session_id or f"run-{uuid.uuid4().hex[:8]}"
         store = SessionStore(sid)
         if resume:
             existing = store.read_graph()
@@ -214,10 +225,11 @@ class Executor:
             graph.add_node("planner", inputs=["USER_QUERY"])
 
         print(f"\n{'═' * 78}\nsession {sid}  ─  query: {query}\n{'═' * 78}")
+        emit("run_start", query=query, resumed=resume,
+             graph=graph_to_payload(graph.g))
         # Read memory ONCE at session start; the same hits flow into every
-        # skill's prompt. The S7 contract is that every cognitive role sees
-        # memory; carrying that forward verbatim here is what makes S7's
-        # indexing investment continue to pay off in S8.
+        # skill's prompt. The contract is that every cognitive role sees
+        # memory; that is what makes the indexing investment pay off.
         memory_hits = memory_svc.read(query) or []
         if memory_hits:
             print(f"[memory.read] {len(memory_hits)} hit(s) visible to every skill this run")
@@ -228,6 +240,7 @@ class Executor:
 
         formatter_answer: str | None = None
         executed_count = 0
+        wave_index = 0
         # Per-target cap for critic-fail recovery; see P1 #5 fix below.
         recovered_branches: dict[str, bool] = {}
         # NOTES_RUNS round-3 review #5: when the cap fires, the branch is
@@ -247,22 +260,35 @@ class Executor:
             for nid in ready:
                 graph.mark(nid, "running")
             store.write_graph(graph.g)
+            # A wave is the unit of parallelism: every node in `ready` runs
+            # concurrently under one gather. The console draws each wave as a
+            # band, so it needs the membership before any of them finishes.
+            wave_index += 1
+            wave_started = time.time()
+            emit("wave_start", wave=wave_index, node_ids=list(ready),
+                 graph=graph_to_payload(graph.g))
 
-            outcomes = await asyncio.gather(*[self._run_one(nid, graph, sid, query, store, memory_hits)
+            outcomes = await asyncio.gather(*[self._run_one(nid, graph, sid, query, store, memory_hits,
+                                                            emit=emit)
                                               for nid in ready])
 
             for nid, result, prompt in outcomes:
                 executed_count += 1
                 graph.g.nodes[nid]["result"] = result
                 graph.mark(nid, "complete" if result.success else "failed")
-                store.write_node(NodeState(
+                node_state = NodeState(
                     node_id=nid, skill=graph.g.nodes[nid]["skill"],
                     status=graph.g.nodes[nid]["status"],
                     inputs=graph.g.nodes[nid]["inputs"],
                     result=result, prompt_sent=prompt,
                     started_at=time.time() - result.elapsed_s,
                     completed_at=time.time(),
-                ))
+                )
+                store.write_node(node_state)
+                # Carries the full NodeState, prompt_sent included, so the
+                # inspector needs no follow-up fetch for a node it watched land.
+                emit("node_complete", node_id=nid, wave=wave_index,
+                     node=node_state.model_dump(mode="json"))
                 print(f"[{nid}] {graph.g.nodes[nid]['skill']:18s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
@@ -273,6 +299,14 @@ class Executor:
                         if handle_critic_verdict(nid, result, graph,
                                                  recovered_branches,
                                                  critic_fail_cap_hit):
+                            # The critic rejected its target: the child is now
+                            # skipped and a recovery planner has been spliced
+                            # in as a fresh root. Both are graph rewrites, not
+                            # additions, so the console must replace its copy.
+                            emit("graph_mutated", cause="critic_fail",
+                                 node_id=nid,
+                                 verdict=result.output.get("rationale", ""),
+                                 graph=graph_to_payload(graph.g))
                             continue
                         # verdict == pass: the child is now ready to run.
                     graph.extend_from(nid, result, registry=self.registry)
@@ -319,8 +353,16 @@ class Executor:
                           f"{rec_nid} queued for {nid}"
                           + (f"; reusing {len(prior_complete)} prior result(s): "
                              f"{', '.join(prior_complete)}" if prior_complete else ""))
+                    emit("graph_mutated", cause="recovery_planner",
+                         node_id=nid, recovery_node_id=rec_nid,
+                         reason=decision.reason,
+                         prior_complete=prior_complete,
+                         graph=graph_to_payload(graph.g))
 
             store.write_graph(graph.g)
+            emit("wave_end", wave=wave_index,
+                 elapsed_s=round(time.time() - wave_started, 3),
+                 graph=graph_to_payload(graph.g))
 
         if formatter_answer is None:
             for nid in reversed(list(graph.g.nodes)):
@@ -340,16 +382,30 @@ class Executor:
                   f"branches because the Critic rejected the re-planned "
                   f"output too.")
         print(f"\n{'═' * 78}\nFINAL: {(formatter_answer or '')[:600]}\n{'═' * 78}\n")
+        emit("run_complete", answer=formatter_answer or "",
+             node_count=executed_count, waves=wave_index,
+             critic_fail_cap_hit=critic_fail_cap_hit,
+             graph=graph_to_payload(graph.g))
         return formatter_answer or ""
 
     async def _run_one(self, nid: str, graph: Graph, sid: str, query: str,
-                       store: SessionStore, memory_hits: list) -> tuple[str, AgentResult, str]:
+                       store: SessionStore, memory_hits: list,
+                       emit: Callable[..., None] | None = None) -> tuple[str, AgentResult, str]:
+        emit = emit or _no_emit
         skill_name = graph.g.nodes[nid]["skill"]
         skill = self.registry.get(skill_name)
         fr = graph.g.nodes[nid].get("metadata", {}).get("failure_report")
+        started_at = time.time()
         store.write_node(NodeState(node_id=nid, skill=skill_name, status="running",
                                    inputs=graph.g.nodes[nid]["inputs"],
-                                   started_at=time.time()))
+                                   started_at=started_at))
+        # Lets the console start a live elapsed counter from a real timestamp.
+        # The terminal write reconstructs started_at as `now - elapsed_s`,
+        # which is close but not measured; this one is.
+        emit("node_running", node_id=nid, skill=skill_name,
+             inputs=graph.g.nodes[nid]["inputs"],
+             metadata=graph.g.nodes[nid].get("metadata", {}),
+             started_at=started_at)
         try:
             result, prompt = await run_skill(skill, nid, graph.g.nodes, sid, query, fr,
                                              memory_hits=memory_hits)

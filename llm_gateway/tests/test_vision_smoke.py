@@ -1,4 +1,4 @@
-"""V9 vision smoke: round-trip an image through the gateway.
+"""Vision smoke: round-trip an image through the gateway.
 
 Generates a tiny PNG locally so the test has no external dependency.
 Drives three cases:
@@ -8,7 +8,7 @@ Drives three cases:
   3. provider explicitly pinned to a text-only provider — gateway should 503
      with "no_vision" in the attempts.
 
-Run from llm_gatewayV9/: uv run python tests/test_vision_smoke.py
+Run from llm_gateway/: uv run python tests/test_vision_smoke.py
 """
 import base64
 import io
@@ -19,7 +19,9 @@ from pathlib import Path
 import httpx
 
 
-GW = "http://localhost:8109"
+import os
+GW = (os.getenv("LLM_GATEWAY_URL")
+      or f"http://localhost:{os.getenv('GATEWAY_PORT', '8109')}")
 
 
 def _make_png_red_blue() -> bytes:

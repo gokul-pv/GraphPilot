@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Session 9 demo runner.
+# Demo runner.
 #
 # Run the unit-test suite, then walk through a curated set of queries
 # that each exercise one orchestrator feature. Every query's stdout is
-# teed into S9/logs/<slug>.log so students can re-read it after the
-# live demo. After each run, the script prints the session id and a
+# teed into logs/<slug>.log so it can be re-read after the run.
+# After each run, the script prints the session id and a
 # one-liner showing how to inspect a node's exact rendered prompt.
 #
 # Usage:
@@ -15,11 +15,11 @@
 #   ./run_demo.sh populations  parallel fan-out (per-worker scoping)
 #   ./run_demo.sh structured   forces distiller → auto-critic chain
 #   ./run_demo.sh fail         graceful-fail-by-planning
-#   ./run_demo.sh browser      Session 9 Browser skill end-to-end
+#   ./run_demo.sh browser      Browser skill end-to-end
 #   ./run_demo.sh wipe         clear state/sessions + logs
 #
-# Requires the V9 gateway running on :8109 (start with
-#   cd ../llm_gatewayV9 && uv run main.py
+# Requires the gateway running on :8109 (start with
+#   cd ../llm_gateway && uv run main.py
 # ).
 
 set -o pipefail
@@ -80,14 +80,14 @@ DEMO: populations
                   - inputs    -> []
                   - QUESTION  -> "current population of <one city>"
                 If you saw all three cities in INPUTS that would be
-                the pre-patch leak that S8/S9 used to have.
+                the pre-patch input leak.
 EOF
       ;;
     structured)
       cat <<'EOF'
 DEMO: structured
   Shape         planner -> researcher x N -> distiller -> CRITIC -> formatter
-  Demonstrates  Session 9 critic auto-insertion fix. The planner
+  Demonstrates  The critic auto-insertion fix. The planner
                 pre-wires distiller -> formatter; the orchestrator
                 detects distiller is critic:true and splices a critic
                 in automatically. The auto-inserted critic gets
@@ -114,11 +114,11 @@ EOF
       cat <<'EOF'
 DEMO: browser
   Shape         planner -> browser -> distiller? -> formatter
-  Demonstrates  The Session 9 Browser skill. Routes through the
+  Demonstrates  The Browser skill. Routes through the
                 four-layer cascade (extract -> deterministic -> a11y
                 -> vision). Per-turn artifacts (marked screenshots,
                 legends) land in state/sessions/<sid>/browser/.
-                Requires Playwright + V9 vision endpoint.
+                Requires Playwright + the gateway's vision endpoint.
 EOF
       ;;
   esac
@@ -126,8 +126,8 @@ EOF
 
 precheck() {
   if ! curl -sf http://localhost:8109/v1/routers >/dev/null; then
-    echo "[demo] V9 gateway is not responding at http://localhost:8109" >&2
-    echo "       start it:  cd $SCRIPT_DIR/../llm_gatewayV9 && uv run main.py" >&2
+    echo "[demo] gateway is not responding at http://localhost:8109" >&2
+    echo "       start it:  cd $SCRIPT_DIR/../llm_gateway && uv run main.py" >&2
     exit 1
   fi
 }

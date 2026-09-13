@@ -1,18 +1,25 @@
-# Session 9 — integration validation
+# Integration validation
 
-Browser skill ported into the S8 runtime as one new sub-package. No edits to
+> **Historical record.** This documents the Browser-skill integration run as
+> it happened, including incidents involving a second gateway on `:8108` and
+> the GitHub Models provider. Both are gone — GitHub Models was removed when
+> W&B Inference replaced it, and the gateway directory is now `llm_gateway/`.
+> The findings are preserved as written rather than retconned; read provider
+> and version names here as a record of what was true at the time.
+
+Browser skill ported into the orchestrator runtime as one new sub-package. No edits to
 flow.py's orchestration logic; the only orchestrator-side change is a single
 `if skill.name == "browser":` branch in `skills.py:run_skill` that mirrors
 the existing `sandbox_executor` dispatch.
 
-All numbers below were captured by re-running each query against the V9
+All numbers below were captured by re-running each query against the
 gateway on `:8109` after the integration landed.
 
 ## Definition-of-done checklist
 
 | item | status |
 |---|---|
-| `uv sync` succeeds in `S9/code/` | ✓ |
+| `uv sync` succeeds in `/code/` | ✓ |
 | `uv run python flow.py "<HF query>"` completes without error | ✓ — see s9_hf_top3 |
 | The Browser skill is a single catalogue entry; flow.py orchestration unchanged | ✓ |
 | `replay.py s9_hf_top3` displays the Browser node and its chosen layer | ✓ — replay shows `"path": "a11y"` |
@@ -159,10 +166,10 @@ locally). The cascade's cheapest path is genuinely free.
 
 ## Rough edges discovered during integration
 
-1. **V9 base URL was wired wrong.** `llm_gatewayV9/client.py` inherited V8's
-   `DEFAULT_URL = "http://localhost:8108"`. Symptom: skills.py LLM calls
+1. **V9 base URL was wired wrong.** `llm_gateway/client.py` inherited V8's
+   `DEFAULT_URL = "http://localhost:8109"`. Symptom: skills.py LLM calls
    went to V8 (still running on 8108), so cost-by-agent on V9 was empty for
-   non-Browser skills. **Fix:** [llm_gatewayV9/client.py:21](../../llm_gatewayV9/client.py).
+   non-Browser skills. **Fix:** [llm_gateway/client.py:21](../../llm_gateway/client.py).
    Took ~10 minutes to find because /v1/chat returned 200 on V9 *and* V8
    so the test looked like it was working until we inspected the ledger.
 
@@ -211,7 +218,7 @@ locally). The cascade's cheapest path is genuinely free.
 ## Files added / modified
 
 ```
-S9/code/
+/code/
   schemas.py                      MOD  +ErrorCode, +AgentResult.error_code, +BrowserOutput
   gateway.py                      MOD  → V9 on :8109
   skills.py                       MOD  +browser dispatch branch (~18 lines)
@@ -219,21 +226,21 @@ S9/code/
   pyproject.toml                  MOD  +playwright +pillow +trafilatura +lxml
   prompts/planner.md              MOD  catalogue line + 3 prompt rules
   prompts/browser.md              MOD  STUB → real prompt
-  browser/__init__.py             PORT from S9SharedCode (unchanged)
+  browser/__init__.py             PORT from the original reference driver (unchanged)
   browser/client.py               PORT + +chat() +cost_by_agent() +session
   browser/dom.py                  PORT (unchanged)
   browser/highlight.py            PORT (unchanged)
   browser/driver.py               PORT + +A11yDriver + +force_path
   browser/skill.py                NEW  (~280 LOC) cascade wrapper
 
-llm_gatewayV9/
+llm_gateway/
   pricing.py                      NEW
   main.py                         MOD  /v1/cost/by_agent ?agent= + dollars
   client.py                       MOD  DEFAULT_URL → 8109
 ```
 
 The Browser-driver core (`client.py`, `dom.py`, `highlight.py`,
-`driver.py`) is the same code that landed in S9SharedCode/code/browser/.
+`driver.py`) is the same code that landed in the original reference driver.
 The only file added during integration is `browser/skill.py`. The
 `client.py` / `driver.py` additions (chat(), force_path, A11yDriver)
 were made before the integration round, in the Layer-2b work.
@@ -348,7 +355,7 @@ properly aria-labelled chrome around their canvas. The driver's
 reasoning. Combined, these mean Layer 2b can usually solve interactive
 goals that the field assumed would require Layer 3.
 
-The honest cascade story for Session 9.md:
+The honest cascade story for .md:
 
 - **Layer 1** is the workhorse for static content (HF article, Wikipedia).
 - **Layer 2b** is the workhorse for interactive content — including
@@ -381,7 +388,7 @@ been fixed under the "gateway owns provider quirks" rule:
    to GitHub immediately 400'd, which is why the §1 Redfin run and the
    §8 candidate-search burned through the gemini→github vision failover
    chain before V9 ran out of providers. See
-   [`llm_gatewayV9/providers.py`](../../llm_gatewayV9/providers.py)
+   [`llm_gateway/providers.py`](../../llm_gateway/providers.py)
    inside `OpenAICompatProvider.chat`.
 2. **Routing race between gemini cooldown and github availability.**
    Gemini's 4-s per-call cooldown can briefly remove it from the vision
@@ -392,5 +399,5 @@ been fixed under the "gateway owns provider quirks" rule:
    vision dispatched.
 
 Both fixes are bug-fixes in V9, not changes to the shipped Browser
-skill — the cascade in `S9/code/browser/skill.py` is the same code
+skill — the cascade in `agent/browser/skill.py` is the same code
 that was shipped in the integration round.

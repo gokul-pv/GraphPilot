@@ -1,4 +1,4 @@
-# V8 agent → provider pinning. Map a skill name (the `agent` field on
+# Agent → provider pinning. Map a skill name (the `agent` field on
 # /v1/chat) to a preferred provider name. Callers can still override
 # per-call by sending provider=... explicitly.
 #
@@ -19,8 +19,8 @@ distiller: gemini
 summariser: gemini
 critic: groq
 formatter: gemini
-retriever: github
-sandbox_executor: github
+retriever: wandb
+sandbox_executor: wandb
 coder: gemini
 browser: gemini
 computer: gemini

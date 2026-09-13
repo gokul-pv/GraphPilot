@@ -14,7 +14,7 @@ Layer architecture:
                            sequences. No LLM. The Calculator demo path.
 
     Layer 2b AX + LLM      get_window_state(capture_mode="ax") → tree_markdown
-                           → cheap text LLM via V9 /v1/chat → element_index.
+                           → cheap text LLM via /v1/chat → element_index.
                            The workhorse layer. Re-scans after every action.
 
     Layer 2c Electron/CDP  target app was launched with electron_debugging_port.
@@ -23,7 +23,7 @@ Layer architecture:
                            window_id is resolved fresh every turn from list_windows.
 
     Layer 3  Vision        get_window_state(capture_mode="som") → annotated PNG
-                           + raw PNG → saved to screenshot_dir → V9 /v1/vision
+                           + raw PNG → saved to screenshot_dir → /v1/vision
                            → pixel (x, y) click. Last resort: 10× cost of 2b.
                            Both the SoM-annotated and the raw screenshot are
                            saved as PNG files per turn.
@@ -38,6 +38,8 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from settings import GATEWAY_URL
 
 from .client import CuaClient, CuaError, WindowRef
 
@@ -283,7 +285,7 @@ class DriverConfig:
     app_name: str | None = None           # for AppleScript activation
     max_steps: int = 12
     max_failures: int = 3
-    gateway_url: str = "http://localhost:8109"
+    gateway_url: str = GATEWAY_URL
     agent_tag: str = "computer"
     provider: str | None = None
     session: str | None = None
@@ -497,9 +499,9 @@ class ComputerDriver:
     # ── layer 2b: AX + LLM ───────────────────────────────────────────────────
 
     async def run_ax_llm(self) -> DriverResult:
-        """Layer 2b — AX tree + V9 /v1/chat."""
-        from browser.client import V9Client
-        v9 = V9Client(base_url=self.cfg.gateway_url,
+        """Layer 2b — AX tree + /v1/chat."""
+        from browser.client import GatewayClient
+        gw = GatewayClient(base_url=self.cfg.gateway_url,
                       agent=self.cfg.agent_tag,
                       session=self.cfg.session)
         goal = self.cfg.goal
@@ -535,7 +537,7 @@ class ComputerDriver:
                 "Reference elements by their [element_index N] number from the tree above."
             )
             try:
-                resp = await v9.chat(
+                resp = await gw.chat(
                     prompt=prompt,
                     schema=COMPUTER_ACTION_SCHEMA,
                     schema_name="computer_action",
@@ -628,9 +630,9 @@ class ComputerDriver:
              dispatches actions via _dispatch_electron.
           3. On done: reads page text one final time for verification.
         """
-        from browser.client import V9Client
+        from browser.client import GatewayClient
 
-        v9 = V9Client(base_url=self.cfg.gateway_url,
+        gw = GatewayClient(base_url=self.cfg.gateway_url,
                       agent=self.cfg.agent_tag,
                       session=self.cfg.session)
         goal = self.cfg.goal
@@ -711,7 +713,7 @@ class ComputerDriver:
 
             print(f"  [electron turn {turn}] calling LLM…", flush=True)
             try:
-                resp = await v9.chat(
+                resp = await gw.chat(
                     prompt=prompt,
                     schema=ELECTRON_ACTION_SCHEMA,
                     schema_name="electron_action",
@@ -798,14 +800,14 @@ class ComputerDriver:
     # ── layer 3: vision ───────────────────────────────────────────────────────
 
     async def run_vision(self) -> DriverResult:
-        """Layer 3 — SoM screenshot + raw screenshot + V9 /v1/vision.
+        """Layer 3 — SoM screenshot + raw screenshot + /v1/vision.
 
         Each turn saves two PNG files:
           - vision_som_turn_NNN.png   — Set-of-Marks annotated (sent to VLM)
           - vision_raw_turn_NNN.png   — raw screenshot (for human review)
         """
-        from browser.client import V9Client
-        v9 = V9Client(base_url=self.cfg.gateway_url,
+        from browser.client import GatewayClient
+        gw = GatewayClient(base_url=self.cfg.gateway_url,
                       agent=self.cfg.agent_tag,
                       session=self.cfg.session)
         goal = self.cfg.goal
@@ -869,7 +871,7 @@ class ComputerDriver:
             )
             print(f"  [vision turn {turn}] calling VLM …", flush=True)
             try:
-                resp = await v9.vision(
+                resp = await gw.vision(
                     image_data_url=data_url,
                     prompt=prompt,
                     schema=VISION_ACTION_SCHEMA,

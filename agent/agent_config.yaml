@@ -1,11 +1,11 @@
-# Session 8 skills catalogue.
+# Skills catalogue.
 #
 # Each entry below names one skill (the node "type" the orchestrator can
 # run). The two files that define a skill are this yaml entry and the
 # referenced `prompt:` markdown — there is no Python class per skill.
 #
 # Fields:
-#   prompt              path to the system prompt, relative to S8/code/
+#   prompt              path to the system prompt, relative to agent/
 #   description         one-line summary (shown in dashboards / replay)
 #   provider_pin        OPTIONAL preferred provider; overridden by
 #                       agent_routing.yaml in the gateway if set there.
@@ -82,7 +82,7 @@ coder:
   internal_successors: [sandbox_executor]
   temperature: 0.2
   max_tokens: 1500
-  description: STUB. Student assignment for Session 8. Emits Python code; the orchestrator hands it to sandbox_executor next.
+  description: STUB. Not implemented. Emits Python code; the orchestrator hands it to sandbox_executor next.
 
 browser:
   prompt: prompts/browser.md

@@ -9,9 +9,9 @@ Five-layer cascade:
     Precondition  permission check + window resolution + AppleScript activation
     Layer 1  ax_extract   — read AX tree directly; no LLM, zero cost
     Layer 2a deterministic — hotkey / element_index sequences; no LLM
-    Layer 2b ax_llm       — AX tree markdown → V9 /v1/chat
-    Layer 2c electron     — CDP page tool → V9 /v1/chat (Electron apps)
-    Layer 3  vision       — SoM screenshot + raw screenshot → V9 /v1/vision
+    Layer 2b ax_llm       — AX tree markdown → /v1/chat
+    Layer 2c electron     — CDP page tool → /v1/chat (Electron apps)
+    Layer 3  vision       — SoM screenshot + raw screenshot → /v1/vision
 
 Recording:
     Every run calls start_recording (record_video=True) → run cascade
@@ -38,6 +38,7 @@ import time
 from pathlib import Path
 
 from schemas import AgentResult, ComputerOutput, NodeSpec
+from settings import GATEWAY_URL
 
 from .client import CuaClient, CuaError, WindowRef
 from .driver import ComputerDriver, DriverConfig, DriverResult
@@ -91,7 +92,7 @@ class ComputerSkill:
     def __init__(
         self,
         *,
-        gateway_url: str = "http://localhost:8109",
+        gateway_url: str = GATEWAY_URL,
         agent_tag: str = "computer",
         ax_provider_pin: str | None = "gemini",
         vision_provider_pin: str | None = None,

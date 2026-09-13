@@ -22,7 +22,7 @@ from typing import Optional
 
 from playwright.async_api import Page
 
-from .client import V9Client
+from .client import GatewayClient
 from .dom import Element, PageSnapshot, enumerate_interactives
 from .highlight import annotate, to_data_url
 
@@ -144,7 +144,7 @@ class DriverConfig:
     max_failures: int = 3
     artifacts_dir: Optional[str] = None
     pause_between_steps: float = 0.5
-    # V9 routing pins. Without these, the gateway picks the first eligible
+    # Routing pins. Without these, the gateway picks the first eligible
     # provider in its failover ring — which can be the slow local Ollama for
     # text-only calls. Pin to e.g. "gemini" for Layer-2b runs.
     provider: Optional[str] = None
@@ -215,7 +215,7 @@ class BaseDriver:
     SYSTEM_PROMPT: str = ""
     LAYER_NAME: str = "base"   # 'vision' | 'a11y' — surfaced in artifacts
 
-    def __init__(self, page: Page, client: V9Client, config: DriverConfig):
+    def __init__(self, page: Page, client: GatewayClient, config: DriverConfig):
         self.page = page
         self.client = client
         self.config = config
@@ -300,7 +300,7 @@ class BaseDriver:
 
 # ─── Layer 3 — set-of-marks vision ───────────────────────────────────────────
 class SetOfMarksDriver(BaseDriver):
-    """Layer 3: screenshot with numbered marks + V9 /v1/vision call."""
+    """Layer 3: screenshot with numbered marks + /v1/vision call."""
 
     SYSTEM_PROMPT = SYSTEM_PROMPT_VISION
     LAYER_NAME = "vision"
@@ -335,7 +335,7 @@ class SetOfMarksDriver(BaseDriver):
 
 # ─── Layer 2b — a11y-text-only ───────────────────────────────────────────────
 class A11yDriver(BaseDriver):
-    """Layer 2b: legend-only text call to V9 /v1/chat. No screenshot, no
+    """Layer 2b: legend-only text call to /v1/chat. No screenshot, no
     vision-capable provider required, much lower per-call cost."""
 
     SYSTEM_PROMPT = SYSTEM_PROMPT_A11Y

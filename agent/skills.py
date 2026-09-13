@@ -1,4 +1,4 @@
-"""Session 8 skill registry + per-skill execution.
+"""Skill registry + per-skill execution.
 
 The orchestrator (flow.py) treats every node as a `Skill` object loaded
 from agent_config.yaml. There is no Python class per skill — that
@@ -26,7 +26,7 @@ import yaml
 from pydantic import ValidationError
 
 import artifacts as artifacts_svc
-from gateway import LLM
+from gateway import LLM, estimate_cost
 from schemas import AgentResult, NodeSpec
 
 ROOT = Path(__file__).parent
@@ -170,7 +170,7 @@ def render_prompt(skill: Skill, query: str, resolved: list[dict],
     if failure_report:
         parts += ["", f"FAILURE:\n{failure_report}"]
     # Memory hits — FAISS-ranked MemoryItems from session-start memory.read.
-    # Same hits flow into every skill's prompt this run (the S7 contract:
+    # Same hits flow into every skill's prompt this run (the contract:
     # every cognitive role can see what the agent already knows).
     hits_block = _format_memory_hits(memory_hits or [])
     if hits_block:
@@ -255,13 +255,13 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
 
     `memory_hits` is the FAISS-ranked MemoryItem list captured once at
     session start by Executor.run and threaded through here so every
-    skill's prompt can see the same hits. This is the S7 promise carried
-    forward — Memory works in S8 because the orchestrator delivers the
+    skill's prompt can see the same hits. Memory works because the
+    orchestrator delivers the
     hits, not just because the FAISS index is on disk.
 
     sandbox_executor bypasses the gateway: it picks the `code` field out of
     its upstream coder node and runs sandbox.run_python directly. All other
-    skills are LLM-backed and route through the V8 gateway with
+    skills are LLM-backed and route through the gateway with
     agent=<skill_name> so agent_routing.yaml + cost-by-agent kick in."""
     resolved = resolve_inputs(graph_nodes[node_id]["inputs"], graph_nodes, query)
     # Per-node sub-question from the Planner's `metadata.question`. Travels
@@ -348,6 +348,36 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
             result.elapsed_s = time.time() - started
         return result, rendered
 
+    def telemetry(reply: dict) -> dict:
+        """Pull the usage fields off a gateway reply into AgentResult kwargs.
+
+        Two reply shapes reach this: a plain `LLM().chat` response, whose
+        counters cover the single call it made, and an `mcp_runner` response,
+        which carries a `_usage` dict already summed over every tool hop plus
+        a `_tool_trace`. Prefer `_usage` when present — the top-level fields
+        on that reply describe only the final hop.
+        """
+        usage = reply.get("_usage") or {
+            "input_tokens": reply.get("input_tokens") or 0,
+            "output_tokens": reply.get("output_tokens") or 0,
+            "cache_read_tokens": reply.get("cache_read_input_tokens") or 0,
+            "latency_ms": reply.get("latency_ms") or 0,
+            "llm_calls": 1,
+        }
+        provider = reply.get("provider", "")
+        return {
+            "provider": provider,
+            "model": reply.get("model", "") or "",
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": usage["output_tokens"],
+            "cache_read_tokens": usage["cache_read_tokens"],
+            "latency_ms": usage["latency_ms"],
+            "llm_calls": usage["llm_calls"],
+            "tool_calls": reply.get("_tool_trace") or [],
+            "cost": estimate_cost(provider, usage["input_tokens"],
+                                  usage["output_tokens"]),
+        }
+
     tools = tool_payload(skill.tools_allowed)
     if tools:
         # Multi-turn tool-use loop. mcp_runner opens one MCP stdio session
@@ -377,7 +407,7 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
 
     # Lift orchestrator-recognised fields out of the skill's JSON.
     # NOTES_RUNS feedback P0 #1: malformed successors used to be silently
-    # dropped, which left students chasing "missing node" bugs for an hour.
+    # dropped, which surfaces later as a baffling "missing node" bug.
     # Now: log the offending JSON + the validation error, then fail the
     # node so the failure path (and replay) surfaces it.
     raw_successors = parsed.pop("successors", []) or []
@@ -405,8 +435,8 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
             success=False, agent_name=skill.name,
             output=parsed, successors=successors,
             elapsed_s=time.time() - started,
-            provider=reply.get("provider", ""),
             error=err,
+            **telemetry(reply),
         ), rendered
 
     return AgentResult(
@@ -415,5 +445,5 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
         output=parsed,
         successors=successors,
         elapsed_s=time.time() - started,
-        provider=reply.get("provider", ""),
+        **telemetry(reply),
     ), rendered

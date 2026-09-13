@@ -9,9 +9,9 @@ What it is NOT. This is not OS-level isolation. There is no chroot, no
 container, no syscall filter, no FS allowlist beyond cwd. A malicious
 script can read /etc and call out to the network. The sandbox is a
 USABILITY boundary — it keeps a runaway loop or noisy print from
-poisoning the orchestrator's stdout — not a SECURITY boundary. Students
-who need real isolation should reach for Firejail or a container
-runtime; that path is correctly outside Session 8's scope.
+poisoning the orchestrator's stdout — not a SECURITY boundary. Real
+isolation means Firejail or a container runtime; that is deliberately out
+of scope here.
 
 Returns a dict the sandbox_executor skill can pack into
 AgentResult.output unchanged.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Task B — Notes app: create a new note using AX tree + LLM judgment.
 
-Cascade layer: Layer 2b (AX + cheap text LLM via V9 /v1/chat)
+Cascade layer: Layer 2b (AX + cheap text LLM via /v1/chat)
 Vision calls:  ZERO  ← assignment constraint satisfied
 LLM calls:     Yes — one Gemini Flash-Lite call per turn
 
@@ -29,16 +29,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from settings import GATEWAY_URL
 from computer.client import CuaClient
 from computer.driver import ComputerDriver, DriverConfig
 
 SESSION_ID = f"notes-{int(time.time())}"
 TRAJECTORY_DIR = str((Path(__file__).resolve().parents[2] / "state" / "sessions" / SESSION_ID / "computer" / "trajectory").resolve())
-GATEWAY_URL = "http://localhost:8109"
 
 NOTE_TITLE = "Agent Test Note"
 NOTE_BODY = (
-    "This note was created by the Session 10 Computer-Use agent.\n"
+    "This note was created by the Computer-Use agent.\n"
     "Layer 2b: AX tree + cheap LLM judgment.\n"
     f"Run ID: {SESSION_ID}"
 )
@@ -48,10 +48,8 @@ GOAL = (
     "When done, press Cmd+S to save."
 )
 
-
 def banner(msg: str) -> None:
     print(f"\n{'─' * 60}\n  {msg}\n{'─' * 60}")
-
 
 def run() -> None:
     client = CuaClient()
@@ -151,7 +149,6 @@ def run() -> None:
         print(f"✓ trajectory: {TRAJECTORY_DIR}")
         print(f"\nReplay:\n  cua-driver call replay_trajectory "
               f"'{{\"dir\":\"{TRAJECTORY_DIR}\"}}'")
-
 
 if __name__ == "__main__":
     run()

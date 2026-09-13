@@ -1,4 +1,4 @@
-# LLM Gateway V9
+# LLM Gateway
 
 [Repository overview](../README.md)
 
@@ -16,7 +16,7 @@ EMBED_ORDER=gemini
 Start from the repository root:
 
 ```bash
-cd llm_gatewayV9
+cd llm_gateway
 uv sync
 uv run python main.py
 ```
@@ -34,14 +34,13 @@ Provider adapters are enabled by these environment variables:
 | Gemini | `GEMINI_API_KEY` | `GEMINI_MODEL` |
 | NVIDIA | `NVIDIA_API_KEY` | `NVIDIA_MODEL` |
 | Groq | `GROQ_API_KEY` | `GROQ_MODEL` |
-| Cerebras | `CEREBRAS_API_KEY` | `CEREBRAS_MODEL` |
 | OpenRouter | `OPEN_ROUTER_API_KEY` | `OPENROUTER_MODEL` |
-| GitHub Models | `GITHUB_ACCESS_TOKEN` | `GITHUB_MODEL` |
+| W&B Inference | `WANDB_API_KEY` | `WANDB_PROJECT` (`<team>/<project>`, sent as the `OpenAI-Project` header), `WANDB_MODEL`, `WANDB_MAX_CTX` |
 | Ollama | `OLLAMA_MODEL` and a running local model | `OLLAMA_URL` defaults to `http://localhost:11434` |
 
 These are implemented adapters; model availability depends on your provider account. Inspect `/v1/providers` and `/v1/capabilities` for this deployment's configured models and supported features.
 
-`LLM_ORDER` sets the worker order; the default is Ollama, Gemini, NVIDIA, Groq, Cerebras, OpenRouter, then GitHub. `ROUTER_ORDER` and `ROUTER_<PROVIDER>_MODEL` configure the separate classification pool. `GATEWAY_V9_PORT` changes the server port, but the bundled agent's startup check and browser/desktop defaults still use 8109.
+`LLM_ORDER` sets the worker order; the default is Gemini, W&B, Groq, OpenRouter, NVIDIA, then Ollama. `ROUTER_ORDER` and `ROUTER_<PROVIDER>_MODEL` configure the separate classification pool, which defaults to W&B, Groq, NVIDIA. `GATEWAY_PORT` changes the server port and propagates to the agent's clients through `agent/settings.py`; the legacy `GATEWAY_V9_PORT` and `LLM_GATEWAY_V9_URL` names are still honoured.
 
 ## Routing and failure behavior
 
@@ -56,7 +55,7 @@ Candidates are filtered by capabilities, context limits, and rate state. **Expli
 
 Non-streaming calls retry a transient 5xx/408/timeout once on the same provider. JSON-schema output is validated and gets one corrective attempt if invalid. Streaming returns server-sent events; an error after streaming starts is reported in that stream, without provider failover. Model support for tools, vision, reasoning, and caching varies.
 
-The default skill map mostly pins Gemini, with critic on Groq and retriever/sandbox_executor on GitHub. Only configured providers activate those pins. The sandbox executor itself runs locally and bypasses the gateway.
+The default skill map mostly pins Gemini, with critic on Groq and retriever/sandbox_executor on W&B. Only configured providers activate those pins. The sandbox executor itself runs locally and bypasses the gateway.
 
 ## API
 
@@ -70,7 +69,7 @@ The default skill map mostly pins Gemini, with critic on Groq and retriever/sand
 | `GET /v1/status`, `/v1/routers`, `/v1/embedders` | Worker, router, and embedding configuration/rate state. |
 | `GET /v1/calls` | Recent call records; optional `limit`, `provider`, and `status` filters. |
 | `GET /v1/cost/by_agent` | Usage grouped by agent; optional `session` and `agent` filters. |
-| `GET /`, `/help` | Dashboard and bundled help page. Some help text retains older version references. |
+| `GET /`, `/help` | Dashboard and bundled help page. |
 
 A minimal call:
 
@@ -92,6 +91,21 @@ The default order is Ollama (`nomic-embed-text`), then Gemini (`gemini-embedding
 
 ## Usage and validation
 
-Calls are recorded in SQLite at `llm_gatewayV9/gateway_v8.db` (the filename is retained). Dollar totals come from the provider-level table in [pricing.py](pricing.py); they are estimates, not billing records, and some providers are assigned zero. Token counts are the more useful usage measure.
+Calls are recorded in SQLite at `llm_gateway/gateway.db`. Dollar totals come from the provider-level table in [pricing.py](pricing.py); they are estimates, not billing records, and the free-tier providers are assigned zero. Token counts are the more useful usage measure — but see Known gaps below, because for W&B the dollar figure is the one that matters.
 
 This documentation was checked against the current source and an offline dependency dry run. Provider integration tests and live model requests were not run as part of this update.
+
+## Known gaps
+
+### The gateway throttles requests and tokens, but not dollars
+
+`router.LIMITS` tracks RPM, RPD, TPM, and a daily token ceiling. It has no concept of cost. That was harmless while every provider in the ring was free-tier or local — it no longer is.
+
+**W&B Inference is metered**, and it sits second in the default worker order. It also publishes no rate limits: the [usage-limits docs](https://docs.wandb.ai/inference/usage-limits) give only a monthly *spend* cap and an undocumented concurrency limit that surfaces as `429 Concurrency limit reached`. So W&B's `LIMITS` entry leaves the quota dimensions deliberately unbounded — inventing throttles would just make the router skip a provider that was actually available — and the 429-backoff path absorbs concurrency rejects instead.
+
+The consequence: **nothing in this gateway stops a runaway agent loop from spending money.** The only backstops today are
+
+- the provider-side monthly spend cap you set in your W&B account, and
+- `GET /v1/cost/by_agent`, which you have to watch yourself.
+
+A fix would follow the shape the rate limiter already uses: record per-call dollars in [db.py](db.py) alongside tokens, expose a `spend_today` rollup, and have `RateState.can_use` compare it against a `MAX_USD_PER_DAY` environment variable. Because that check lives in the same place as the rate checks, an exhausted budget would make W&B simply ineligible — the request fails over to the free providers rather than erroring. Keep the rates in [pricing.py](pricing.py) accurate, since that table would become the enforcement input rather than just a report.

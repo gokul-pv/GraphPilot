@@ -1,9 +1,11 @@
-"""V9 /v1/vision smoke. Sends a tiny red/blue PNG with a JSON schema and
+"""/v1/vision smoke. Sends a tiny red/blue PNG with a JSON schema and
 expects {"left":"red","right":"blue"} parsed structured output."""
 import base64, struct, zlib, json
 import httpx
 
-GW = "http://localhost:8109"
+import os
+GW = (os.getenv("LLM_GATEWAY_URL")
+      or f"http://localhost:{os.getenv('GATEWAY_PORT', '8109')}")
 
 
 def make_png() -> bytes:

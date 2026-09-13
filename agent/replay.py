@@ -1,4 +1,4 @@
-"""Replay a persisted Session 8 run, one node at a time.
+"""Replay a persisted run, one node at a time.
 
 Stdin-driven. Reads `state/sessions/<sid>/` and walks its NodeState
 records in completion order. For each node prints a fixed block, then

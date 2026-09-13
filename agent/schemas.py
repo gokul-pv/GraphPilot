@@ -1,11 +1,11 @@
-"""Typed contracts every layer in the S7 agent talks in.
+"""Typed contracts every layer of the agent talks in.
 
 One small file, read top-to-bottom. Every other module imports from here, so
 the boundary between layers is a Pydantic model rather than a free-form dict.
 
-Session 7 adds one optional field on `MemoryItem`: `embedding`. Items of
-kind `fact`, `preference`, and `tool_outcome` carry a vector embedding
-written by Memory at insert time. The embedding underlies FAISS vector
+`MemoryItem` carries one optional field, `embedding`. Items of kind
+`fact`, `preference`, and `tool_outcome` get a vector embedding written by
+Memory at insert time. The embedding underlies FAISS vector
 search. Items of kind `scratchpad` are run-scoped and skip embedding.
 """
 
@@ -97,7 +97,7 @@ class DecisionOutput(BaseModel):
         return self.answer is not None
 
 
-# ── Session 8: multi-agent growing graph ────────────────────────────────────
+# ── Multi-agent growing graph ───────────────────────────────────────────────
 
 class NodeSpec(BaseModel):
     """One node the orchestrator will eventually run. `inputs` items are
@@ -115,7 +115,7 @@ class NodeSpec(BaseModel):
     resolved_inputs: list[dict] = Field(default_factory=list)
 
 
-# Session 9 / 10: structured failure taxonomy.
+# Structured failure taxonomy.
 # Browser skill uses gateway_blocked … vlm_unavailable.
 # Computer skill adds permission_denied and window_not_found.
 # Other skills leave error_code=None and fall through to
@@ -144,13 +144,35 @@ class AgentResult(BaseModel):
     elapsed_s: float = 0.0
     provider: str = ""
     error: str | None = None
-    # Session 9: structured failure code for the Browser skill (other skills
+    # Structured failure code for the Browser skill (other skills
     # leave it None and fall through to recovery's text heuristics).
     error_code: ErrorCode | None = None
 
+    # ── Per-node telemetry ───────────────────────────────────────────────
+    # The gateway already returns all of this on every reply; until now
+    # skills.py read only `provider` off it and dropped the rest, so every
+    # node on disk recorded cost 0.0 and no tokens. These are what the
+    # console's node inspector renders. All default-valued, so sessions
+    # written before this existed still load.
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    # Gateway-measured latency. Differs from elapsed_s, which is wall-clock
+    # for the whole node including prompt render and (for tool skills) every
+    # MCP round trip. The gap between them is the orchestrator's own overhead.
+    latency_ms: int = 0
+    # One entry per MCP tool the skill actually dispatched:
+    # {name, arguments, result_preview, elapsed_s}. Tool-using skills loop
+    # chat↔tool inside mcp_runner; without this the trace is invisible.
+    tool_calls: list[dict] = Field(default_factory=list)
+    # Number of chat round trips the gateway was asked for. 1 for a plain
+    # skill, up to MAX_TOOL_HOPS+1 for a tool-using one.
+    llm_calls: int = 0
+
 
 class BrowserOutput(BaseModel):
-    """Session 9: typed payload the Browser skill writes into AgentResult.output.
+    """Typed payload the Browser skill writes into AgentResult.output.
 
     `path` is the cascade layer the skill actually used.  Downstream skills
     consume `content` through the normal output pipe; only replay and the
@@ -167,14 +189,14 @@ class BrowserOutput(BaseModel):
 
 
 class ComputerOutput(BaseModel):
-    """Session 10: typed payload the Computer skill writes into AgentResult.output.
+    """Typed payload the Computer skill writes into AgentResult.output.
 
     `path` mirrors BrowserOutput.path — the cascade layer that actually ran:
       ax_extract    — Layer 1: AX read (no LLM, no actions)
       deterministic — Layer 2a: caller-supplied hotkey/element_index sequence
-      ax_llm        — Layer 2b: AX tree markdown → V9 /v1/chat
-      electron      — Layer 2c: Electron app via CDP page tool → V9 /v1/chat
-      vision        — Layer 3: screenshot + set-of-marks → V9 /v1/vision
+      ax_llm        — Layer 2b: AX tree markdown → /v1/chat
+      electron      — Layer 2c: Electron app via CDP page tool → /v1/chat
+      vision        — Layer 3: screenshot + set-of-marks → /v1/vision
 
     `window_id` is the cua-driver window identifier (or pid for Electron).
 
@@ -192,7 +214,7 @@ class ComputerOutput(BaseModel):
 
 class NodeState(BaseModel):
     """Per-node persistent record. `prompt_sent` is the load-bearing field
-    for replay — replay shows the student the exact bytes that hit the
+    for replay — replay shows the exact bytes that hit the
     gateway, not a reconstruction."""
 
     node_id: str

@@ -104,7 +104,7 @@ def handle_critic_verdict(nid: str, result, graph, recovered_branches: dict,
     the normal `extend_from` (because the Critic emitted `fail` and we
     handled it by splicing a recovery Planner). False on `pass`.
 
-    Two shapes of Critic appear in S8: auto-inserted Critics (Graph.extend_from
+    Two shapes of Critic appear: auto-inserted Critics (Graph.extend_from
     inserts one whenever a `critic:true` skill has outgoing edges) which
     carry `target` + `child` in metadata, and Planner-emitted Critics
     which do not — for the latter we derive both from graph structure.

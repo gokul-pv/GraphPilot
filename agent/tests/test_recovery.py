@@ -10,7 +10,7 @@ Review round-3 #2: the classifier is keyword-based; without these
 tests a gateway-prose change is a silent regression.
 
 The strings below were captured from real httpx / FastAPI error
-output in the V8 gateway logs and from the providers.py error
+output in the gateway logs and from the providers.py error
 branches.
 """
 
@@ -31,9 +31,9 @@ from schemas import AgentResult
 # Strings the gateway actually emits today. Each tuple is
 # (error_text, expected_reason).
 GATEWAY_TRANSIENT_STRINGS = [
-    "exception: HTTPStatusError: Server error '503 Service Unavailable' for url 'http://localhost:8108/v1/chat'",
-    "exception: HTTPStatusError: Server error '502 Bad Gateway' for url 'http://localhost:8108/v1/chat'",
-    "exception: HTTPStatusError: Server error '504 Gateway Timeout' for url 'http://localhost:8108/v1/chat'",
+    "exception: HTTPStatusError: Server error '503 Service Unavailable' for url 'http://localhost:8109/v1/chat'",
+    "exception: HTTPStatusError: Server error '502 Bad Gateway' for url 'http://localhost:8109/v1/chat'",
+    "exception: HTTPStatusError: Server error '504 Gateway Timeout' for url 'http://localhost:8109/v1/chat'",
     "Timeout occurred while waiting for provider reply",
     "Connection reset by peer",
     "httpx.ConnectError: All connection attempts failed",

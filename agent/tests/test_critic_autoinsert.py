@@ -1,6 +1,6 @@
 """Deterministic test for the critic auto-insertion fix.
 
-In S8 (and S9 before this fix), the critic auto-insertion block only
+Before this fix, the critic auto-insertion block only
 fired when a `critic: true` skill (today: distiller) emitted NEW dynamic
 successors during `extend_from`. If the Planner had already pre-wired
 the full chain upfront — planner → researcher → distiller → formatter —
@@ -36,7 +36,7 @@ def _ok_result(skill: str) -> AgentResult:
 
 
 def test_critic_spliced_on_pre_planned_distiller_to_formatter():
-    """The student-reported case: Planner pre-wires distiller → formatter,
+    """The reported case: Planner pre-wires distiller → formatter,
     distiller is `critic: true`. After distiller completes, the orchestrator
     must splice a Critic between distiller and formatter."""
     registry = SkillRegistry()

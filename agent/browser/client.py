@@ -1,4 +1,4 @@
-"""Framework-free client for llm_gatewayV9.
+"""Framework-free client for the LLM gateway.
 
 Plain httpx — no LangChain, no provider SDKs. The shipped Browser skill
 talks to the gateway over HTTP, the same way every other S-session skill
@@ -7,7 +7,7 @@ does. Provider rotation, retries, agent tagging are the gateway's job.
 Two methods: `vision()` hits /v1/vision for Layer-3 set-of-marks calls,
 `chat()` hits /v1/chat for Layer-2b a11y-text calls (no image, cheaper,
 doesn't require a vision-capable provider). `cost_by_agent()` queries the
-gateway's V8 ledger so tests can pull real numbers.
+gateway ledger so tests can pull real numbers.
 """
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
+
+from settings import GATEWAY_URL
 
 
 @dataclass
@@ -33,12 +35,12 @@ class GatewayResult:
 VisionResult = GatewayResult
 
 
-class V9Client:
-    """One client, two methods: vision() and chat(). Both speak to V9."""
+class GatewayClient:
+    """One client, two methods: vision() and chat(). Both speak to the gateway."""
     def __init__(
         self,
-        base_url: str = "http://localhost:8109",
-        agent: str = "s9_browser",
+        base_url: str = GATEWAY_URL,
+        agent: str = "browser",
         timeout: float = 120.0,
         session: Optional[str] = None,
     ):
@@ -132,7 +134,7 @@ class V9Client:
 
     async def cost_by_agent(self, agent: Optional[str] = None,
                             session: Optional[str] = None) -> dict:
-        """Pull the V9 ledger for this agent/session — tests use it to
+        """Pull the gateway ledger for this agent/session — tests use it to
         report real numbers rather than wall-clock estimates."""
         params: dict[str, Any] = {}
         if agent:   params["agent"] = agent
@@ -144,4 +146,5 @@ class V9Client:
 
 
 # Back-compat alias.
-V9VisionClient = V9Client
+# Back-compat alias for the early set-of-marks driver.
+V9VisionClient = GatewayClient

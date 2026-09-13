@@ -1,20 +1,18 @@
 """Memory: a typed service with four kinds.
 
-Session 7 adds vector retrieval on top of the Session 6 service. Reads go
-through FAISS first (cosine similarity over the `embedding` field). When
-the vector path returns nothing, the read falls back to the S6 keyword
-overlap. Writes embed the descriptor at insert time for items of kind
+Reads go through FAISS first (cosine similarity over the `embedding`
+field). When the vector path returns nothing, the read falls back to
+keyword overlap. Writes embed the descriptor at insert time for items of kind
 `fact`, `preference`, and `tool_outcome`. Scratchpad items skip embedding.
 
 The classifying write for ambiguous free-form content still uses one
 gateway chat call routed `auto_route="memory"`. The embedding call is a
 separate gateway endpoint, `POST /v1/embed`, exposed by `gateway.embed()`.
 
-Three honest design choices flagged in the Session 7 notes:
-  1. Vector retrieval only. Hybrid retrieval with RRF arrives in a future
-     session.
+Three limitations worth knowing about:
+  1. Vector retrieval only. Hybrid retrieval with RRF is not implemented.
   2. Sliding-window chunking inside `index_document` is heuristic.
-     Semantic chunking arrives in Session 8.
+     Semantic chunking is not implemented.
   3. The embedding model is fixed at the gateway level. Switching it
      invalidates every FAISS index already built. Treat the model as a
      project-level constant.
@@ -60,7 +58,7 @@ def _save(items: list[MemoryItem]) -> None:
 def _index() -> VectorIndex:
     """Return a freshly-loaded FAISS index every call.
 
-    Re-reading the index file is cheap at S7 scale and keeps the agent
+    Re-reading the index file is cheap at this scale and keeps the agent
     process consistent with writes made by the MCP subprocess (which runs
     `index_document` in a separate Python process and persists to the same
     disk files). On cold start (no index files on disk), the index is
@@ -87,7 +85,7 @@ def _try_embed(text: str, task_type: str) -> list[float] | None:
         return None
 
 
-# ── keyword search (Session 6 path, used as fallback) ───────────────────────
+# ── keyword search (fallback path) ──────────────────────────────────────────
 
 _STOPWORDS = {
     "the", "is", "a", "an", "of", "to", "and", "or", "in", "on", "for", "at",
@@ -127,7 +125,7 @@ def _keyword_search(
     return [i for _, i in scored[:top_k]]
 
 
-# ── vector search (the new S7 path) ─────────────────────────────────────────
+# ── vector search (primary path) ────────────────────────────────────────────
 
 def _vector_search(
     query: str,

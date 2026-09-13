@@ -1,6 +1,6 @@
 """Tool-use loop wrapper around the gateway + MCP server.
 
-When a Session 8 skill declares `tools_allowed: [...]` in agent_config.yaml,
+When a skill declares `tools_allowed: [...]` in agent_config.yaml,
 its dispatch goes through `run_with_tools` (below) rather than a single
 chat call. The wrapper drives the conversation until the model stops
 asking for tool_calls and emits text:
@@ -13,7 +13,7 @@ asking for tool_calls and emits text:
        else:
          return reply.text
 
-The MCP server is the same `mcp_server.py` carried over from S7. We open
+The MCP server is `mcp_server.py`. We open
 one stdio session per skill invocation (the spawn cost is ~100ms and the
 session lives only for the lifetime of one node — keeping it short means
 no shared mutable state between skills).
@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 
 from mcp import ClientSession, StdioServerParameters
@@ -36,6 +37,7 @@ from gateway import LLM
 
 MCP_SERVER = Path(__file__).parent / "mcp_server.py"
 MAX_TOOL_HOPS = 6  # hard cap so a model that loves tool-use can't cost a fortune
+TOOL_RESULT_PREVIEW = 600  # chars of each tool result kept for the console trace
 
 
 async def _dispatch_tool(session: ClientSession, name: str, args: dict) -> str:
@@ -59,9 +61,36 @@ async def run_with_tools(*, prompt: str, tools_payload: list[dict],
     """Multi-turn chat: dispatch tool_calls via MCP, keep going until the
     model returns text. Returns the FINAL gateway reply dict (so callers
     can read `text`, `provider`, etc. the same way they would for a
-    one-shot call)."""
+    one-shot call).
+
+    Token counts on that final reply cover only the last hop, which for a
+    researcher that ran three searches is a small fraction of what the node
+    actually spent. So the reply is augmented before it goes back:
+
+        _usage       {input_tokens, output_tokens, cache_read_tokens,
+                      latency_ms, llm_calls} summed over every hop
+        _tool_trace  one entry per dispatched tool call
+
+    Both are underscore-prefixed to keep them clearly distinct from the
+    gateway's own ChatResponse fields.
+    """
     messages: list[dict] = [{"role": "user", "content": prompt}]
     last_reply: dict = {}
+    usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+             "latency_ms": 0, "llm_calls": 0}
+    trace: list[dict] = []
+
+    def _accumulate(reply: dict) -> None:
+        usage["input_tokens"] += int(reply.get("input_tokens") or 0)
+        usage["output_tokens"] += int(reply.get("output_tokens") or 0)
+        usage["cache_read_tokens"] += int(reply.get("cache_read_input_tokens") or 0)
+        usage["latency_ms"] += int(reply.get("latency_ms") or 0)
+        usage["llm_calls"] += 1
+
+    def _finish(reply: dict) -> dict:
+        reply["_usage"] = usage
+        reply["_tool_trace"] = trace
+        return reply
 
     server_params = StdioServerParameters(command=sys.executable, args=[str(MCP_SERVER)])
     async with stdio_client(server_params) as (read, write):
@@ -73,9 +102,10 @@ async def run_with_tools(*, prompt: str, tools_payload: list[dict],
                                     provider_pin=provider_pin,
                                     max_tokens=max_tokens, temperature=temperature)
                 last_reply = reply
+                _accumulate(reply)
                 tool_calls = reply.get("tool_calls") or []
                 if not tool_calls:
-                    return reply
+                    return _finish(reply)
                 # Carry the assistant's tool-call turn back through.
                 messages.append({
                     "role": "assistant",
@@ -83,15 +113,23 @@ async def run_with_tools(*, prompt: str, tools_payload: list[dict],
                     "tool_calls": tool_calls,
                 })
                 for tc in tool_calls:
-                    result_text = await _dispatch_tool(mcp, tc["name"],
-                                                      tc.get("arguments") or {})
+                    args = tc.get("arguments") or {}
+                    t0 = time.time()
+                    result_text = await _dispatch_tool(mcp, tc["name"], args)
+                    trace.append({
+                        "name": tc["name"],
+                        "arguments": args,
+                        "result_preview": result_text[:TOOL_RESULT_PREVIEW],
+                        "result_chars": len(result_text),
+                        "elapsed_s": round(time.time() - t0, 3),
+                    })
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.get("id", ""),
                         "content": result_text[:8_000],  # cap per-tool reply
                     })
     # Hit the hop cap. Return whatever the gateway last said.
-    return last_reply
+    return _finish(last_reply)
 
 
 async def _chat(*, messages, tools, agent, session_id, provider_pin,

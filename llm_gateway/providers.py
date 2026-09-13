@@ -1,4 +1,4 @@
-"""Provider adapters for llm_gatewayV2.
+"""Provider adapters for the LLM gateway.
 
 Each provider implements:
   async chat(messages, *, max_tokens, temperature, model, tools, tool_choice,
@@ -26,7 +26,7 @@ import httpx
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# V9 multimodal helpers
+# Multimodal helpers
 # ────────────────────────────────────────────────────────────────────────────
 # Canonical input form for image content (matches OpenAI/LangChain shape):
 #   {"role": "user", "content": [
@@ -44,6 +44,11 @@ VISION_MODEL_HINTS = (
     "llama-3.2-11b-vision", "llama-3.2-90b-vision",
     "minicpm-v", "molmo", "pixtral", "internvl",
     "gemma3", "phi-4-multimodal",
+    # W&B Inference catalogue. These names carry no "-vl"/"vision" marker, so
+    # they have to be listed explicitly or the router silently skips the
+    # provider on every screenshot. Note the precision required: GLM-5.3-Flash
+    # is multimodal but GLM-5.2 is not, so match the full model name.
+    "glm-5.3-flash", "kimi-k2", "minimax-m3", "gemma-4", "qwen3.8", "qwen3.6",
     "-vl", "vision", "vlm",
 )
 
@@ -52,8 +57,6 @@ def _model_supports_vision(provider: str, model: str) -> bool:
     m = (model or "").lower()
     if provider == "gemini":
         return True  # all current gemini chat models are multimodal
-    if provider in ("cerebras",):
-        return False  # text-only catalogue
     return any(h in m for h in VISION_MODEL_HINTS)
 
 
@@ -191,6 +194,7 @@ class BaseProvider:
 # ────────────────────────────────────────────────────────────────────────────
 
 REASONING_MODEL_HINTS = ("gpt-oss", "qwen3-think", "deepseek-r1", "deepseek-r2",
+                        "deepseek-v4",  # W&B catalogue lists V4-Flash/V4-Pro as reasoning
                         "qwen3", "o1", "o3", "o4", "gpt-5")
 
 
@@ -327,7 +331,7 @@ class OpenAICompatProvider(BaseProvider):
                 if r.status_code != 200 and "json_schema" in (body.get("response_format") or {}).get("type", ""):
                     body["response_format"] = {"type": "json_object"}
                     r = await c.post(f"{self.base_url}/chat/completions", headers=self._headers(), json=body)
-                # V9: github / azure-openai-flavoured surfaces refuse
+                # Some azure-openai-flavoured surfaces refuse
                 # response_format=json_object unless the literal word "json"
                 # appears in `messages`. Inject a one-line hint into the
                 # system message and retry. (Gateway-owns-quirks rule.)
@@ -438,11 +442,26 @@ class GroqProvider(OpenAICompatProvider):
         super().__init__(api_key, model, "https://api.groq.com/openai/v1")
 
 
-class CerebrasProvider(OpenAICompatProvider):
-    name = "cerebras"
+class WandbProvider(OpenAICompatProvider):
+    """Weights & Biases Inference — OpenAI-compatible, plus one extra header.
+
+    W&B scopes every call to a team/project pair via `OpenAI-Project`. The
+    header is sent only when a project is configured; without one the call
+    degrades to a plain OpenAI-compatible request rather than sending an
+    empty scope.
+    """
+    name = "wandb"
     capabilities = {**OpenAICompatProvider.capabilities, "reasoning": True}
-    def __init__(self, api_key, model):
-        super().__init__(api_key, model, "https://api.cerebras.ai/v1")
+
+    def __init__(self, api_key, model, project: str = ""):
+        super().__init__(api_key, model, "https://api.inference.wandb.ai/v1")
+        self.project = project
+
+    def _headers(self):
+        h = super()._headers()
+        if self.project:
+            h["OpenAI-Project"] = self.project
+        return h
 
 
 class NvidiaProvider(OpenAICompatProvider):
@@ -461,15 +480,8 @@ class OpenRouterProvider(OpenAICompatProvider):
     def _headers(self):
         h = super()._headers()
         h["HTTP-Referer"] = "http://localhost"
-        h["X-Title"] = "LLM Gateway V2"
+        h["X-Title"] = "LLM Gateway"
         return h
-
-
-class GitHubProvider(OpenAICompatProvider):
-    name = "github"
-    capabilities = {**OpenAICompatProvider.capabilities, "reasoning": True}
-    def __init__(self, api_key, model):
-        super().__init__(api_key, model, "https://models.github.ai/inference")
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -953,57 +965,51 @@ def model_capabilities(provider_name: str, model: str, default_caps: dict) -> di
     if provider_name == "ollama":
         caps["tools"] = True  # we always have prompted fallback
         caps["reasoning"] = False
-    if provider_name in ("groq", "cerebras", "nvidia", "openrouter", "github"):
+    if provider_name in ("groq", "nvidia", "openrouter", "wandb"):
         caps["reasoning"] = _model_supports_reasoning(model)
-    # V9: vision is fully model-dependent. Override per configured model.
+    # Vision is fully model-dependent. Override per configured model.
     caps["vision"] = _model_supports_vision(provider_name, model)
     return caps
 
 
 def build_providers(cache_store):
-    """Worker pool — the LLMs that do real work for the agent.
-
-    V3 changes vs V2:
-    - cerebras worker default: zai-glm-4.7 (was qwen-3-235b-a22b-instruct-2507, deprecating May 27 2026)
-    - groq worker default: openai/gpt-oss-120b (was llama-3.3-70b-versatile, now moved to router pool)
-    """
+    """Worker pool — the LLMs that do real work for the agent."""
     out = {}
     if k := os.getenv("GEMINI_API_KEY"):
         out["gemini"] = GeminiProvider(k, os.getenv("GEMINI_MODEL", "gemini-2.5-flash"), cache_store)
+    if k := os.getenv("WANDB_API_KEY"):
+        out["wandb"] = WandbProvider(
+            k,
+            os.getenv("WANDB_MODEL", "zai-org/GLM-5.3-Flash"),
+            os.getenv("WANDB_PROJECT", ""),
+        )
     if k := os.getenv("NVIDIA_API_KEY"):
         out["nvidia"] = NvidiaProvider(k, os.getenv("NVIDIA_MODEL", "deepseek-ai/deepseek-v3.2"))
     if k := os.getenv("GROQ_API_KEY"):
         out["groq"] = GroqProvider(k, os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
-    if k := os.getenv("CEREBRAS_API_KEY"):
-        out["cerebras"] = CerebrasProvider(k, os.getenv("CEREBRAS_MODEL", "zai-glm-4.7"))
     if k := os.getenv("OPEN_ROUTER_API_KEY"):
         out["openrouter"] = OpenRouterProvider(k, os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free"))
-    if k := os.getenv("GITHUB_ACCESS_TOKEN"):
-        out["github"] = GitHubProvider(k, os.getenv("GITHUB_MODEL", "openai/gpt-4.1-mini"))
     if om := os.getenv("OLLAMA_MODEL"):
         out["ollama"] = OllamaProvider(om, os.getenv("OLLAMA_URL", "http://localhost:11434"))
-    # V9: bake per-model capability overrides (vision/reasoning) into each
-    # instance, so Router.pick() — which reads provider.capabilities directly —
-    # sees the resolved truth instead of the class-level default.
+    # Bake per-model capability overrides (vision/reasoning) into each instance,
+    # so Router.pick() — which reads provider.capabilities directly — sees the
+    # resolved truth instead of the class-level default.
     for name, p in out.items():
         p.capabilities = model_capabilities(name, p.model, getattr(p, "capabilities", {}))
     return out
 
 
-# V3 router pool — small/fast LLMs used only for routing decisions.
-# Separate from the worker pool: separate quotas, separate dashboard section,
-# separate per-call markers. Routers receive a bounded envelope (token_count +
-# 800-char sample) and emit a single word (TINY/LARGE/HUGE).
+# Router pool — small/fast LLMs used only for routing decisions. Separate from
+# the worker pool: separate quotas, separate dashboard section, separate
+# per-call markers. Routers receive a bounded envelope (token_count + 800-char
+# sample) and emit a single word (TINY/LARGE/HUGE).
 ROUTER_DEFAULTS = {
-    # NOTE: On the test Cerebras account, gpt-oss-120b / zai-glm-4.7 / qwen-3-32b
-    # all 404 (no entitlement despite docs). Only llama3.1-8b and the deprecating
-    # qwen-3-235b respond. Using llama3.1-8b — small, fast, the natural router
-    # shape. *** DEPRECATES MAY 27, 2026 *** — must update ROUTER_CEREBRAS_MODEL
-    # before then, OR upgrade the Cerebras account to unlock gpt-oss-120b.
-    "cerebras": "llama3.1-8b",
+    # gpt-oss-20b is the natural router shape — small, fast, reasoning-capable,
+    # and ~5x cheaper on input than the GLM worker model. The router fires on
+    # every auto_route call, so that difference compounds.
+    "wandb": "openai/gpt-oss-20b",
     "groq": "llama-3.3-70b-versatile",
     "nvidia": "nvidia/llama-3.1-nemotron-nano-8b-v1",
-    "github": "microsoft/Phi-4-mini-instruct",
 }
 
 
@@ -1011,15 +1017,17 @@ def build_router_providers():
     """Router pool — same provider classes as workers, but separate instances
     with router-specific (smaller/faster) model defaults. Uses the same API keys
     as workers; per-provider rate budgets are independent because the providers
-    we picked (Cerebras, Groq, NVIDIA, GitHub) all meter per-model, not per-key.
+    we picked (W&B, Groq, NVIDIA) all meter per-model, not per-key.
     """
     out = {}
-    if k := os.getenv("CEREBRAS_API_KEY"):
-        out["cerebras"] = CerebrasProvider(k, os.getenv("ROUTER_CEREBRAS_MODEL", ROUTER_DEFAULTS["cerebras"]))
+    if k := os.getenv("WANDB_API_KEY"):
+        out["wandb"] = WandbProvider(
+            k,
+            os.getenv("ROUTER_WANDB_MODEL", ROUTER_DEFAULTS["wandb"]),
+            os.getenv("WANDB_PROJECT", ""),
+        )
     if k := os.getenv("GROQ_API_KEY"):
         out["groq"] = GroqProvider(k, os.getenv("ROUTER_GROQ_MODEL", ROUTER_DEFAULTS["groq"]))
     if k := os.getenv("NVIDIA_API_KEY"):
         out["nvidia"] = NvidiaProvider(k, os.getenv("ROUTER_NVIDIA_MODEL", ROUTER_DEFAULTS["nvidia"]))
-    if k := os.getenv("GITHUB_ACCESS_TOKEN"):
-        out["github"] = GitHubProvider(k, os.getenv("ROUTER_GITHUB_MODEL", ROUTER_DEFAULTS["github"]))
     return out

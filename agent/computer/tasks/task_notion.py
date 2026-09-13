@@ -24,6 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from settings import GATEWAY_URL
 from computer.client import CuaClient, CuaError
 from computer.driver import ComputerDriver, DriverConfig
 
@@ -38,7 +39,6 @@ SESSION_ID      = f"notion-{int(time.time())}"
 _state_root     = Path(__file__).resolve().parents[2] / "state" / "sessions" / SESSION_ID / "computer"
 TRAJECTORY_DIR  = str((_state_root / "trajectory").resolve())
 SCREENSHOT_DIR  = str((_state_root / "screenshots").resolve())
-GATEWAY_URL     = "http://localhost:8109"
 
 PAGE_TITLE = "Notion Agent Test"
 PAGE_BODY = "Hello from Antigravity computer-use agent!"
@@ -49,12 +49,10 @@ GOAL = (
     "then type the title and body text."
 )
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def banner(msg: str) -> None:
     print(f"\n{'─' * 60}\n  {msg}\n{'─' * 60}", flush=True)
-
 
 # ── electron run ──────────────────────────────────────────────────────────────
 
@@ -133,7 +131,6 @@ def run_electron(client: CuaClient) -> bool:
 
     return result.success
 
-
 # ── vision run ────────────────────────────────────────────────────────────────
 
 def run_vision(client: CuaClient) -> bool:
@@ -195,7 +192,6 @@ def run_vision(client: CuaClient) -> bool:
     print(f"  Screenshots saved to: {SCREENSHOT_DIR}", flush=True)
 
     return result.success
-
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
@@ -265,7 +261,6 @@ def run() -> None:
         print(f"  Electron (Layer 2c): {'PASS ✓' if el_ok else 'FAIL ✗'}", flush=True)
     if do_vision:
         print(f"  Vision   (Layer 3):  {'PASS ✓' if vis_ok else 'FAIL ✗'}", flush=True)
-
 
 if __name__ == "__main__":
     run()

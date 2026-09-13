@@ -1,11 +1,11 @@
-"""V7 embed-endpoint tests. Run from llm_gatewayV7/:  uv run pytest -v tests/test_embed.py
+"""Embed-endpoint tests. Run from llm_gateway/:  uv run pytest -v tests/test_embed.py
 
 Markers:
   - local:   requires `ollama` running locally with `nomic-embed-text` pulled
   - network: requires GEMINI_API_KEY in ../.env and outbound HTTPS
 
-The tests start an in-process httpx ASGI client against the V7 FastAPI app —
-they do NOT require V7 to be running on port 8107. This keeps the test suite
+The tests start an in-process httpx ASGI client against the FastAPI app —
+they do NOT require a running server. This keeps the test suite
 fast (~5s for the four tests) and self-contained.
 """
 from __future__ import annotations
@@ -19,10 +19,10 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
-# Add parent dir to path so `import main` finds V7's modules.
+# Add parent dir to path so `import main` finds the gateway's modules.
 HERE = Path(__file__).parent.parent
 sys.path.insert(0, str(HERE))
-load_dotenv(HERE.parent / ".env")  # same .env as V3
+load_dotenv(HERE.parent / ".env")
 
 EXPECTED_OLLAMA_DIM = 768  # nomic-embed-text
 EXPECTED_FALLBACK_DIM = 768  # gemini-embedding-001 with outputDimensionality=768

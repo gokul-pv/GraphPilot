@@ -15,9 +15,14 @@ __pycache__/
 .venv/
 .pytest_cache/
 
+# node / console frontend
+node_modules/
+dist/
+.pnpm-store/
+*.tsbuildinfo
+
 # os
 .DS_Store
 
-gateway_v8.db
-gateway_v9.db
+gateway.db
 out/

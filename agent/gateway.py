@@ -1,16 +1,8 @@
-"""Bridge to llm_gatewayV9.
+"""Bridge to the LLM gateway.
 
-V9 is V8 plus two things: (1) `/v1/vision` — typed shim for single-image
-vision calls that the Browser skill's Layer-3 driver hits; (2) per-agent
-USD pricing on `/v1/cost/by_agent` so the ledger surfaces dollars in
-addition to tokens. V8's `agent` tagging, `/v1/chat/batch`, and retry-
-on-5xx carry forward unchanged.
-
-The session-version mapping (V9 for Session 9) lets V8 stay frozen for
-Session 8.
-
-Auto-starts the gateway on port 8109 if it is not already up, then
-re-exports the V9 `LLM` client and a module-level `embed()` helper.
+Auto-starts the gateway if it is not already up, then re-exports its `LLM`
+client, a module-level `embed()` helper, and a cost estimator backed by the
+gateway's own price table.
 """
 
 from __future__ import annotations
@@ -21,8 +13,9 @@ from pathlib import Path
 
 import httpx
 
-GATEWAY_V9_DIR = Path(__file__).resolve().parents[1] / "llm_gatewayV9"
-GATEWAY_URL = "http://localhost:8109"
+from settings import GATEWAY_URL
+
+GATEWAY_DIR = Path(__file__).resolve().parents[1] / "llm_gateway"
 
 
 def _is_up() -> bool:
@@ -34,18 +27,18 @@ def _is_up() -> bool:
 
 
 def ensure_gateway() -> None:
-    """Start V9 if it is not already running. Idempotent."""
+    """Start the gateway if it is not already running. Idempotent."""
     if _is_up():
         return
-    if not GATEWAY_V9_DIR.exists():
+    if not GATEWAY_DIR.exists():
         raise RuntimeError(
-            f"Gateway V9 directory not found at {GATEWAY_V9_DIR}. "
-            "Build llm_gatewayV9 (Session 9 prerequisite) before running S9 code."
+            f"Gateway directory not found at {GATEWAY_DIR}. "
+            "The gateway must be present before running the agent."
         )
-    print(f"[gateway] launching llm_gatewayV9 from {GATEWAY_V9_DIR}")
+    print(f"[gateway] launching from {GATEWAY_DIR}")
     subprocess.Popen(
         ["uv", "run", "main.py"],
-        cwd=str(GATEWAY_V9_DIR),
+        cwd=str(GATEWAY_DIR),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -54,21 +47,48 @@ def ensure_gateway() -> None:
         if _is_up():
             print(f"[gateway] up on {GATEWAY_URL}")
             return
-    raise RuntimeError(f"Gateway V9 failed to start within 45s. Check {GATEWAY_V9_DIR}")
+    raise RuntimeError(f"Gateway failed to start within 45s. Check {GATEWAY_DIR}")
 
 
-# Load V9's client.py without polluting sys.path. The gateway dir has its
-# own `schemas.py`, which would shadow ours if we put it on the path.
+# Load the gateway's client.py by path rather than by import. The gateway dir
+# has its own `schemas.py`, which would shadow ours if we put it on sys.path.
 import importlib.util as _importlib_util
 
-_client_path = GATEWAY_V9_DIR / "client.py"
+_client_path = GATEWAY_DIR / "client.py"
 if _client_path.exists():
-    _spec = _importlib_util.spec_from_file_location("llm_gatewayV9_client", _client_path)
+    _spec = _importlib_util.spec_from_file_location("llm_gateway_client", _client_path)
     _mod = _importlib_util.module_from_spec(_spec)
     _spec.loader.exec_module(_mod)
     LLM = _mod.LLM
 else:
-    LLM = None  # populated once V9 is built; importers should ensure_gateway() first
+    LLM = None  # importers should call ensure_gateway() first
+
+
+_pricing_path = GATEWAY_DIR / "pricing.py"
+if _pricing_path.exists():
+    _pspec = _importlib_util.spec_from_file_location("llm_gateway_pricing", _pricing_path)
+    _pmod = _importlib_util.module_from_spec(_pspec)
+    _pspec.loader.exec_module(_pmod)
+    _estimate_usd = _pmod.estimate_usd
+else:
+    _estimate_usd = None
+
+
+def estimate_cost(provider: str, in_tokens: int, out_tokens: int) -> float:
+    """USD estimate for one call, using the gateway's own price table.
+
+    Loaded by path rather than copied so the table stays single-sourced in
+    llm_gateway/pricing.py. The free-tier providers (gemini, nvidia,
+    openrouter) and local ollama are all 0.00 there, so a zero is usually
+    correct rather than missing. W&B is the one that bills — for those calls
+    this number is the only spend signal the system produces.
+    """
+    if _estimate_usd is None or not provider:
+        return 0.0
+    try:
+        return _estimate_usd(provider, in_tokens, out_tokens)
+    except Exception:
+        return 0.0
 
 
 def embed(text: str, task_type: str = "retrieval_document") -> dict:
@@ -76,9 +96,10 @@ def embed(text: str, task_type: str = "retrieval_document") -> dict:
     ensure_gateway()
     if LLM is None:
         raise RuntimeError(
-            "Gateway V9 client unavailable. Confirm llm_gatewayV9/client.py exists."
+            f"Gateway client unavailable. Confirm {GATEWAY_DIR}/client.py exists."
         )
     return LLM().embed(text, task_type=task_type)
 
 
-__all__ = ["ensure_gateway", "LLM", "GATEWAY_URL", "GATEWAY_V9_DIR", "embed"]
+__all__ = ["ensure_gateway", "LLM", "GATEWAY_URL", "GATEWAY_DIR", "embed",
+           "estimate_cost"]

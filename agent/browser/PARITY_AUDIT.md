@@ -1,11 +1,11 @@
-# S9 Browser SoM driver — feature parity vs browser-use
+# Browser SoM driver — feature parity vs browser-use
 
 This doc cross-references our framework-free Layer-3 driver
-(`S9SharedCode/code/browser/*`) against the feature set of
+(`agent/browser/`) against the feature set of
 `browser-use@main`'s vision mode (audited June 2026). The columns are:
 
 - **Status**: ✓ matched · ⚠ partial / deliberate trade-off · ✗ not implemented
-- **Our impl**: file path and line range in `S9SharedCode/code/browser/`
+- **Our impl**: file path and line range in `agent/browser/`
 - **browser-use ref**: file path inside their repo (audit source of truth)
 
 Total shipped LOC: **~720** across 5 files
@@ -43,10 +43,10 @@ That includes docstrings, blank lines, and the action schema; net code is ~520 L
 
 | # | Feature | Status | Our impl | browser-use ref |
 |---|---|---|---|---|
-| 18 | Framework-free LLM interface | ✓ Plain `httpx` POST to `llm_gatewayV9 /v1/vision`. Compare to browser-use's 1-method `typing.Protocol` (their `BaseChatModel`). Both are "no LangChain". | `client.py:27-82` | `browser_use/llm/base.py:14-38` |
-| 19 | Structured output | ✓ V9's `response_format=json_schema` populates `ChatResponse.parsed`. Schema is `ACTION_SCHEMA` (JSON Schema dict, not Pydantic). | `driver.py:46-83` (`ACTION_SCHEMA`); `client.py:54-63` | `llm/openai/*`, `llm/anthropic/*`, `llm/google/*` per-provider adapters |
-| 20 | Image transport | ✓ data: URL with base64 PNG; V9 also accepts http(s) URLs and pre-resolves them to data: URLs. | `highlight.py:130-131` (`to_data_url`); V9 `main.py:_resolve_image_urls` | `llm/openai/serializer.py` and friends |
-| 21 | Provider rotation / retries | ✓ Owned by V9 (router pool, rate-state, failover) — driver is unaware. | `client.py:42-71` | their `AgentSettings.llm_*` plumbing |
+| 18 | Framework-free LLM interface | ✓ Plain `httpx` POST to `llm_gateway /v1/vision`. Compare to browser-use's 1-method `typing.Protocol` (their `BaseChatModel`). Both are "no LangChain". | `client.py:27-82` | `browser_use/llm/base.py:14-38` |
+| 19 | Structured output | ✓ The gateway's `response_format=json_schema` populates `ChatResponse.parsed`. Schema is `ACTION_SCHEMA` (JSON Schema dict, not Pydantic). | `driver.py:46-83` (`ACTION_SCHEMA`); `client.py:54-63` | `llm/openai/*`, `llm/anthropic/*`, `llm/google/*` per-provider adapters |
+| 20 | Image transport | ✓ data: URL with base64 PNG; the gateway also accepts http(s) URLs and pre-resolves them to data: URLs. | `highlight.py:130-131` (`to_data_url`); gateway `main.py:_resolve_image_urls` | `llm/openai/serializer.py` and friends |
+| 21 | Provider rotation / retries | ✓ Owned by the gateway (router pool, rate-state, failover) — driver is unaware. | `client.py:42-71` | their `AgentSettings.llm_*` plumbing |
 
 ## Agent loop
 

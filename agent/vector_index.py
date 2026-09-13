@@ -1,4 +1,4 @@
-"""FAISS-backed vector index for the S7 Memory service.
+"""FAISS-backed vector index for the Memory service.
 
 Wraps `faiss.IndexFlatIP` (inner product on L2-normalized vectors, which
 equals cosine similarity) with a parallel `list[str]` of `MemoryItem` ids.
@@ -12,7 +12,7 @@ Persists to two files under `state/`:
 On startup, if either file is missing the index is rebuilt from scratch by
 the caller (typically Memory passes every embedded item back through `add`).
 
-S7 stops here. Hybrid retrieval and RRF appear in a future session.
+Hybrid retrieval and RRF are not implemented.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ try:
     import faiss  # type: ignore[import-untyped]
 except ImportError as e:
     raise SystemExit(
-        "faiss-cpu is required for S7. Run: uv add faiss-cpu"
+        "faiss-cpu is required for vector search. Run: uv add faiss-cpu"
     ) from e
 
 

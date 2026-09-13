@@ -2,7 +2,7 @@ import sqlite3, time
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = str(Path(__file__).parent / "gateway_v8.db")
+DB_PATH = str(Path(__file__).parent / "gateway.db")
 
 
 @contextmanager
@@ -47,7 +47,7 @@ def init():
         c.execute("CREATE INDEX IF NOT EXISTS idx_ts ON calls(ts DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_prov_ts ON calls(provider, ts DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_role_ts ON calls(call_role, ts DESC)")
-        # V8: backwards-compatible upgrade — add the new columns if a pre-V8
+        # Backwards-compatible upgrade — add the newer columns if an older
         # database is being reused.
         cols = {r["name"] for r in c.execute("PRAGMA table_info(calls)").fetchall()}
         if "embed_dim" not in cols:
@@ -88,7 +88,7 @@ def log_call(provider, model, input_tokens=0, output_tokens=0, latency_ms=0,
 
 
 def by_agent(session=None, since=None):
-    """V8: per-agent cost/token rollup. When `session` is set, scopes the
+    """per-agent cost/token rollup. When `session` is set, scopes the
     rollup to a single flow-run; otherwise rolls up the calendar day."""
     where = ["ts >= ?"]
     args = [since if since is not None else (time.time() - (time.time() % 86400))]
