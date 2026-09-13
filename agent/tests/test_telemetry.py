@@ -24,10 +24,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from schemas import AgentResult
-
+from core.schemas import AgentResult
 
 def _telemetry(reply: dict) -> dict:
     """Mirror of the helper inside skills.run_skill.
@@ -38,7 +35,7 @@ def _telemetry(reply: dict) -> dict:
     that duplicating it here is the lesser evil; if it grows, lift it to a
     module-level function in skills.py and import it.
     """
-    from skills import estimate_cost
+    from core.skills import estimate_cost
 
     usage = reply.get("_usage") or {
         "input_tokens": reply.get("input_tokens") or 0,
@@ -60,7 +57,6 @@ def _telemetry(reply: dict) -> dict:
         "cost": estimate_cost(provider, usage["input_tokens"],
                               usage["output_tokens"]),
     }
-
 
 # ── plain (non-tool) skill ───────────────────────────────────────────────────
 
@@ -84,13 +80,11 @@ def test_plain_reply_lifts_every_counter() -> None:
     assert t["llm_calls"] == 1
     assert t["tool_calls"] == []
 
-
 def test_groq_is_priced_from_the_gateway_table() -> None:
     # groq is 0.15 in / 0.75 out per 1M tokens in llm_gateway/pricing.py.
     t = _telemetry({"provider": "groq", "input_tokens": 1_000_000,
                     "output_tokens": 1_000_000})
     assert t["cost"] == 0.9
-
 
 def test_free_provider_costs_nothing() -> None:
     # gemini is priced at 0.00/0.00, so zero here is correct, not missing.
@@ -98,17 +92,14 @@ def test_free_provider_costs_nothing() -> None:
                     "output_tokens": 9_000})
     assert t["cost"] == 0.0
 
-
 def test_unknown_provider_does_not_raise() -> None:
     assert _telemetry({"provider": "nonesuch", "input_tokens": 10,
                        "output_tokens": 10})["cost"] == 0.0
-
 
 def test_missing_counters_default_to_zero() -> None:
     t = _telemetry({"provider": "gemini"})
     assert (t["input_tokens"], t["output_tokens"], t["latency_ms"]) == (0, 0, 0)
     assert t["model"] == ""
-
 
 # ── tool-using skill ─────────────────────────────────────────────────────────
 
@@ -139,7 +130,6 @@ def test_usage_sums_across_hops_not_just_the_last() -> None:
     assert [c["name"] for c in t["tool_calls"]] == ["web_search", "fetch_url"]
     assert t["tool_calls"][0]["arguments"]["query"] == "Mumbai population"
 
-
 def test_tool_trace_survives_onto_agent_result() -> None:
     r = AgentResult(success=True, agent_name="researcher",
                     **_telemetry({
@@ -154,7 +144,6 @@ def test_tool_trace_survives_onto_agent_result() -> None:
     round_tripped = AgentResult.model_validate(r.model_dump())
     assert round_tripped.tool_calls[0]["name"] == "web_search"
     assert round_tripped.llm_calls == 2
-
 
 # ── backward compatibility ───────────────────────────────────────────────────
 

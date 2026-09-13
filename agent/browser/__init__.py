@@ -4,7 +4,7 @@ Framework-free: Playwright + Pillow + httpx → the gateway's /v1/vision.
 No LangChain, no browser-use dependency. See ../README.md for the layered
 cascade (extract / a11y / vision) this slots into.
 """
-from .client import GatewayResult, GatewayClient, V9VisionClient, VisionResult
+from .client import GatewayResult, GatewayClient
 from .dom import Element, PageSnapshot, enumerate_interactives
 from .driver import (
     ACTION_SCHEMA,
@@ -35,8 +35,6 @@ __all__ = [
     "SYSTEM_PROMPT_A11Y",
     "SYSTEM_PROMPT_VISION",
     "GatewayClient",
-    "V9VisionClient",
-    "VisionResult",
     "annotate",
     "enumerate_interactives",
     "to_data_url",

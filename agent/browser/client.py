@@ -1,8 +1,8 @@
 """Framework-free client for the LLM gateway.
 
-Plain httpx — no LangChain, no provider SDKs. The shipped Browser skill
-talks to the gateway over HTTP, the same way every other S-session skill
-does. Provider rotation, retries, agent tagging are the gateway's job.
+Plain httpx — no LangChain, no provider SDKs. The Browser skill talks to the
+gateway over HTTP, the same way every other skill does. Provider rotation,
+retries, and agent tagging are the gateway's job.
 
 Two methods: `vision()` hits /v1/vision for Layer-3 set-of-marks calls,
 `chat()` hits /v1/chat for Layer-2b a11y-text calls (no image, cheaper,
@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 import httpx
 
-from settings import GATEWAY_URL
+from services.gateway import GATEWAY_URL
 
 
 @dataclass
@@ -29,10 +29,6 @@ class GatewayResult:
     latency_ms: int
     input_tokens: int
     output_tokens: int
-
-
-# Back-compat alias — the early SoM driver imports `VisionResult`.
-VisionResult = GatewayResult
 
 
 class GatewayClient:
@@ -143,8 +139,3 @@ class GatewayClient:
             r = await c.get(f"{self.base_url}/v1/cost/by_agent", params=params)
             r.raise_for_status()
             return r.json()
-
-
-# Back-compat alias.
-# Back-compat alias for the early set-of-marks driver.
-V9VisionClient = GatewayClient

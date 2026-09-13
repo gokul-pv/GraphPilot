@@ -33,15 +33,19 @@ from ddgs import DDGS
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-# Same-directory imports for the Memory and Artifact services so that the
-# new index_document / search_knowledge tools can delegate into them.
+# This server runs as its own subprocess (see services/mcp_runner.py), so it
+# puts agent/ on the path itself rather than inheriting it. That is what lets
+# index_document / search_knowledge delegate into the Memory and Artifact
+# services.
 import sys
-sys.path.insert(0, str(Path(__file__).parent))
-import artifacts as _artifacts  # noqa: E402
-import memory as _memory  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from services import artifacts as _artifacts  # noqa: E402
+from services import memory as _memory  # noqa: E402
 
 MAX_SEARCH_RESULTS = 5  # hard cap — Tavily prices per result
 
+# Root .env first (shared with the gateway), then agent/.env as an override.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(Path(__file__).parent / ".env")
 
 mcp = FastMCP("MCP-server")
@@ -247,11 +251,11 @@ def read_file(path: str) -> dict:
 @mcp.tool()
 def list_dir(path: str = ".") -> dict:
     """List a directory inside the sandbox. Example: list_dir(".")."""
-    # NOTES_RUNS §6 (1): a list[dict] return was being rendered as one MCP
-    # TextContent per entry. After the 300-char clip and decision.py's
-    # downstream slicing, only the first 2-3 file dicts survived into the
-    # Decision prompt, and Decision then declared the directory complete at
-    # whatever it could see. Returning a single dict with `count` and a flat
+    # A list[dict] return is rendered as one MCP TextContent per entry.
+    # After the caller's 300-char clip and downstream slicing, only the first
+    # 2-3 file dicts survived into the prompt, and the model then declared the
+    # directory complete at whatever it could see. Returning a single dict
+    # with `count` and a flat
     # `names` list keeps the cardinality visible even under truncation.
     p = _safe(path)
     entries = []

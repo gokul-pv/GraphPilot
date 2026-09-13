@@ -1,13 +1,17 @@
-"""HTTP API for the GraphPilot console.
+"""HTTP API for GraphPilot.
 
 The orchestrator is a CLI: `flow.py "<query>"` prints progress and returns one
-string. This wraps it for a browser — start a run, stream it as it executes,
-read any past run back off disk — and proxies the gateway so the frontend
-talks to a single origin.
+string. This wraps it as JSON + SSE — start a run, stream it as it executes,
+read any past run back off disk — and reverse-proxies the gateway so a browser
+client has a single origin to talk to.
+
+There is no frontend in this repo right now. If a build appears at
+FRONTEND_DIST, this server will also serve it; until then it is headless and
+`GET /` reports that.
 
 Run it with:
 
-    cd agent && uv run api.py          # :8110, serves the built frontend too
+    cd agent && uv run api.py          # :8110
 
 Three things here are load-bearing rather than incidental:
 
@@ -44,15 +48,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-import persistence
-from events import bus
-from gateway import GATEWAY_URL, ensure_gateway
-from persistence import SessionStore, list_sessions
-from settings import API_PORT
+from core import persistence
+from core.events import bus
+# Importing gateway also loads .env, which `env_int` below depends on.
+from services.gateway import GATEWAY_URL, ensure_gateway, env_int
+from core.persistence import SessionStore, list_sessions
 
 ROOT = Path(__file__).parent
 FRONTEND_DIST = ROOT.parent / "frontend" / "dist"
-PORT = API_PORT
+PORT = env_int("AGENT_API_PORT", default=8110)
 
 # Session ids are generated as f"run-{uuid4().hex[:8]}" but --resume accepts
 # anything — including ids from older runs, which used an "s8-" prefix — so
@@ -425,11 +429,16 @@ async def proxy_gateway(path: str, request: Request) -> Response:
 
 # ── static frontend ──────────────────────────────────────────────────────────
 
-if FRONTEND_DIST.exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"),
-              name="assets")
+def mount_frontend(target: FastAPI, dist: Path) -> None:
+    """Register the asset mount and the SPA catch-all against `dist`.
 
-    @app.get("/{full_path:path}")
+    A function rather than inline module-level code so a test can exercise the
+    catch-all against a throwaway build. Registered last on purpose — see the
+    `/api/` guard below — so call this after every real route.
+    """
+    target.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+
+    @target.get("/{full_path:path}")
     async def spa(full_path: str) -> Response:
         """Serve the built frontend, falling back to index.html for routes.
 
@@ -440,35 +449,36 @@ if FRONTEND_DIST.exists():
         """
         if full_path.startswith("api/") or full_path == "api":
             raise HTTPException(404, f"no such endpoint: /{full_path}")
-        candidate = FRONTEND_DIST / full_path
+        candidate = dist / full_path
         # resolve() collapses any ".." before the containment check, so a
         # crafted path cannot climb out of the build directory.
         if full_path:
             try:
                 resolved = candidate.resolve()
-                if resolved.is_file() and resolved.is_relative_to(
-                    FRONTEND_DIST.resolve()
-                ):
+                if resolved.is_file() and resolved.is_relative_to(dist.resolve()):
                     return FileResponse(resolved)
             except OSError:
                 pass
-        return FileResponse(FRONTEND_DIST / "index.html")
+        return FileResponse(dist / "index.html")
+
+
+if FRONTEND_DIST.exists():
+    mount_frontend(app, FRONTEND_DIST)
 else:
     @app.get("/")
     async def no_frontend() -> JSONResponse:
         return JSONResponse({
-            "error": "frontend not built",
-            "fix": "cd frontend && pnpm install && pnpm build",
-            "note": f"expected a build at {FRONTEND_DIST}",
+            "error": "no frontend build",
+            "note": f"this server serves a build placed at {FRONTEND_DIST}; "
+                    "none is present, so the API is headless",
             "api": "/api/health",
         }, status_code=503)
 
 
 def main() -> None:
-    print(f"[api] GraphPilot console on http://localhost:{PORT}")
+    print(f"[api] GraphPilot API on http://localhost:{PORT}")
     if not FRONTEND_DIST.exists():
-        print(f"[api] no frontend build at {FRONTEND_DIST} — "
-              f"run `cd frontend && pnpm build`, or `pnpm dev` for the dev server")
+        print(f"[api] headless — no frontend build at {FRONTEND_DIST}")
     # Started eagerly so the gateway's 45s cold start is paid here, at boot,
     # rather than on the user's first query.
     try:

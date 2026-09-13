@@ -34,7 +34,7 @@ flowchart LR
 | Browser | HTML extraction, supplied selector actions, accessibility-based interaction, and screenshot-based vision fallback. |
 | macOS desktop | Accessibility reads, scripted actions, text-model control, Electron DOM control, and vision fallback through `cua-driver`. |
 | LLM gateway | Provider selection, automatic failover for unpinned calls, rate limits, retries, tool calls, structured output, batch requests, vision, and embeddings. |
-| Visibility | A web console with a live execution graph and per-node inspector, plus node prompts and outputs, browser/desktop artifacts, gateway dashboard, token usage, and estimated cost by agent/session. |
+| Visibility | A JSON + SSE API that streams a run as it executes and reads past runs back off disk, terminal replay, the gateway dashboard, and token usage and estimated cost by agent/session. A web console is planned; there is no frontend in the repo yet. |
 
 The gateway supports adapters for Gemini, W&B Inference, Groq, OpenRouter, NVIDIA, and Ollama. Enabled providers depend on your configuration. Note that W&B is metered while the rest are free-tier or local — see [Known gaps](llm_gateway/README.md#known-gaps), because the gateway limits requests and tokens but not spend. The coder prompt is currently a stub; its execution hook runs Python in a subprocess with time and output limits, without full OS isolation.
 
@@ -77,13 +77,13 @@ uv run python flow.py "Say hello in one short sentence."
 
 The gateway dashboard is at <http://localhost:8109>. Use `flow.py --interactive` for repeated queries.
 
-**Or use the console.** From the repository root, `./console.sh` builds the web
-interface, starts it on <http://localhost:8110>, and starts the gateway if it is
-not already running. Ask a question, watch the graph build itself, and click any
-node for its prompt, output, tool calls, timing and token use. See the
-[console guide](docs/console.md). Requires Node and `pnpm`.
+**Or drive it over HTTP.** `cd agent && uv run python api.py` serves a JSON API
+on <http://localhost:8110>: `POST /api/runs` starts a run,
+`GET /api/runs/<id>/events` streams it as server-sent events, and
+`GET /api/sessions` reads past runs. It starts the gateway itself if it is not
+already up.
 
-**Browser tasks:** install Playwright Chromium using the [browser guide](docs/browser-automation.md). Web research optionally reads `TAVILY_API_KEY` from `agent/.env`; search falls back to DDGS.
+**Browser tasks:** install Playwright Chromium using the [browser guide](docs/browser-automation.md). Web research optionally reads `TAVILY_API_KEY` from the root `.env`; search falls back to DDGS.
 
 **Desktop tasks:** require macOS, the `cua-driver` CLI/CuaDriver app, and Accessibility and Screen Recording permissions. Follow the [computer-use guide](docs/computer-use.md), then start the daemon and Notes example from the repository root:
 
@@ -97,9 +97,7 @@ These examples operate the host desktop.
 
 ## Guides
 
-- [Console: chat interface, live graph, and node inspector](docs/console.md)
 - [DAG orchestration, setup, recovery, and replay](docs/dag-orchestrator.md)
 - [Browser workflow and artifacts](docs/browser-automation.md)
 - [Computer use, desktop examples, and recordings](docs/computer-use.md)
 - [LLM gateway configuration and API](llm_gateway/README.md)
-- [Desktop driver reference](docs/desktop-driver.md)

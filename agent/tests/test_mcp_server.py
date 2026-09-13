@@ -12,10 +12,9 @@ import pytest_asyncio
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-HERE = Path(__file__).parent
+HERE = Path(__file__).resolve().parents[1]
 SERVER = HERE / "mcp_server.py"
 SANDBOX = HERE / "sandbox"
-
 
 def _result(res) -> object:
     """Extract a structured payload from a CallToolResult."""
@@ -33,12 +32,10 @@ def _result(res) -> object:
     except json.JSONDecodeError:
         return text
 
-
 def _clean_sandbox() -> None:
     if SANDBOX.exists():
         shutil.rmtree(SANDBOX)
     SANDBOX.mkdir()
-
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def session():
@@ -47,7 +44,6 @@ async def session():
         async with ClientSession(read, write) as s:
             await s.initialize()
             yield s
-
 
 @pytest.mark.network
 @pytest.mark.asyncio
@@ -60,7 +56,6 @@ async def test_web_search(session):
     for hit in data:
         assert {"title", "url", "snippet"} <= set(hit)
 
-
 @pytest.mark.network
 @pytest.mark.asyncio
 async def test_fetch_url(session):
@@ -72,7 +67,6 @@ async def test_fetch_url(session):
     assert data["length_bytes"] > 0
     assert "text" in data["content_type"].lower() or "html" in data["content_type"].lower()
 
-
 @pytest.mark.asyncio
 async def test_get_time(session):
     res = await session.call_tool("get_time", {"timezone": "Asia/Kolkata"})
@@ -82,7 +76,6 @@ async def test_get_time(session):
     assert data["offset_hours"] == 5.5
     assert "T" in data["iso"]
     assert data["human"]
-
 
 @pytest.mark.network
 @pytest.mark.asyncio
@@ -99,7 +92,6 @@ async def test_currency_convert(session):
     assert data["converted"] > 0
     assert data["rate"] > 0
 
-
 @pytest.mark.asyncio
 async def test_read_file(session):
     _clean_sandbox()
@@ -111,7 +103,6 @@ async def test_read_file(session):
     assert data["encoding"] == "utf-8"
     assert data["size_bytes"] == 11
     assert data["path"] == "hello.txt"
-
 
 @pytest.mark.asyncio
 async def test_list_dir(session):
@@ -128,7 +119,6 @@ async def test_list_dir(session):
     assert names["sub"]["type"] == "dir"
     assert names["sub"]["size_bytes"] == 0
 
-
 @pytest.mark.asyncio
 async def test_create_file(session):
     _clean_sandbox()
@@ -142,7 +132,6 @@ async def test_create_file(session):
     dup = await session.call_tool("create_file", {"path": "new.txt", "content": "x"})
     assert dup.isError, "second create on same path must error"
     print("create_file dup error:", dup.content[0].text if dup.content else "")
-
 
 @pytest.mark.asyncio
 async def test_update_file(session):
@@ -158,7 +147,6 @@ async def test_update_file(session):
     missing = await session.call_tool("update_file", {"path": "nope.txt", "content": "x"})
     assert missing.isError
     print("update_file missing error:", missing.content[0].text if missing.content else "")
-
 
 @pytest.mark.asyncio
 async def test_edit_file(session):
@@ -193,7 +181,6 @@ async def test_edit_file(session):
     )
     assert missing.isError
     print("edit_file not-found error:", missing.content[0].text if missing.content else "")
-
 
 @pytest.mark.asyncio
 async def test_sandbox_escape(session):

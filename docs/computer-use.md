@@ -20,7 +20,14 @@ Selection depends on the goal, application, and available UI information. Read-o
 
 ## Setup
 
-Use macOS, Python 3.11+, and the [agent dependency setup](dag-orchestrator.md#setup). Install CuaDriver and its CLI at `~/.local/bin/cua-driver`, and grant Accessibility and Screen Recording permissions using the [desktop driver reference](desktop-driver.md).
+Use macOS, Python 3.11+, and the [agent dependency setup](dag-orchestrator.md#setup). Install CuaDriver and its CLI at `~/.local/bin/cua-driver` from [trycua/cua](https://github.com/trycua/cua).
+
+Grant two permissions in **System Settings → Privacy & Security**, to the app that launches the driver (Terminal, iTerm, or CuaDriver itself):
+
+- **Accessibility** — required for reading the AX tree and sending clicks and keystrokes.
+- **Screen Recording** — required for screenshots, so only the vision path needs it.
+
+Both take effect on the next launch of the granted app; a running process will keep failing until restarted.
 
 Configure the gateway on port 8109 with Gemini for the default text-control path and a vision-capable model for screenshots. Provider keys belong in the repository root `.env`; see the [gateway setup](../llm_gateway/README.md#start-and-configure). Start the gateway separately, then start the driver daemon:
 
@@ -32,7 +39,7 @@ These tasks operate your host desktop. Notes and VS Code must be installed for t
 
 ## Run the examples
 
-Start at the repository root. Notes creates an “Agent Test Note”; the VS Code examples write “Hello World” to `~/Desktop/greeting.txt`. Choose the command for the example you want:
+Start at the repository root. Notes creates an “Agent Test Note”; the VS Code examples write “Hello World” to `~/Desktop/greeting.txt`; Calculator and Notion exercise the same cascade against those apps. Choose the command for the example you want:
 
 ```bash
 cd agent
@@ -42,6 +49,10 @@ uv run python -m computer.tasks.task_notes
 uv run python -m computer.tasks.task_vscode --electron
 # VS Code through screenshots:
 uv run python -m computer.tasks.task_vscode --vision
+# Calculator, accessibility only (no vision calls):
+uv run python -m computer.tasks.task_calculator
+# Notion, an Electron app driven through its DOM:
+uv run python -m computer.tasks.task_notion
 ```
 
 These scripts call the desktop driver directly. For planner-managed work, run a request through `flow.py` from `agent/`:

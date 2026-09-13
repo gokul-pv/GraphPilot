@@ -58,43 +58,11 @@ class Artifact(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-# ── Goals & Observations ────────────────────────────────────────────────────
-
-class Goal(BaseModel):
-    id: str
-    text: str
-    done: bool = False
-    attach_artifact_id: str | None = None        # Perception sets this when the goal needs raw bytes
-
-
-class Observation(BaseModel):
-    goals: list[Goal]
-
-    @property
-    def all_done(self) -> bool:
-        return bool(self.goals) and all(g.done for g in self.goals)
-
-    def next_unfinished(self) -> Goal | None:
-        return next((g for g in self.goals if not g.done), None)
-
-
-# ── Decision output ─────────────────────────────────────────────────────────
+# ── Tool calls ──────────────────────────────────────────────────────────────
 
 class ToolCall(BaseModel):
     name: str
     arguments: dict
-
-
-class DecisionOutput(BaseModel):
-    """Decision emits exactly one of these two. `answer` carries arbitrary
-    semantic work (summarise, extract, compare, translate) inside its text."""
-
-    answer: str | None = None
-    tool_call: ToolCall | None = None
-
-    @property
-    def is_answer(self) -> bool:
-        return self.answer is not None
 
 
 # ── Multi-agent growing graph ───────────────────────────────────────────────

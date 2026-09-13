@@ -2,7 +2,7 @@
 """Task B — Notes app: create a new note using AX tree + LLM judgment.
 
 Cascade layer: Layer 2b (AX + cheap text LLM via /v1/chat)
-Vision calls:  ZERO  ← assignment constraint satisfied
+Vision calls:  ZERO  ← handled entirely without screenshots
 LLM calls:     Yes — one Gemini Flash-Lite call per turn
 
 What it does:
@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from settings import GATEWAY_URL
+from services.gateway import GATEWAY_URL
 from computer.client import CuaClient
 from computer.driver import ComputerDriver, DriverConfig
 

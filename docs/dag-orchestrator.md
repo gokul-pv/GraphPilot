@@ -16,7 +16,7 @@ uv sync
 cd ..
 ```
 
-`uv sync` reads each project's `pyproject.toml`, creates its `.venv`, and includes the default development dependencies. Use this setup instead of the older, incomplete `agent/requirements.txt`.
+`uv sync` reads each project's `pyproject.toml`, creates its `.venv`, and includes the default development dependencies. `pyproject.toml` plus `uv.lock` are the only dependency manifests.
 
 Configure the root `.env` and start the gateway as shown in the [quick start](../README.md#quick-start). For web research, install Chromium as described in the [browser guide](browser-automation.md#run-the-example). Optionally copy `agent/.env.example` to `agent/.env` and set a real Tavily key; otherwise search uses DDGS. The MCP server is launched automatically for tool-using skills.
 
@@ -41,7 +41,7 @@ The executor has a 60-node execution cap. Recovery and critic checks can still l
 
 ## Sessions, replay, and memory
 
-Each run prints a session ID. State is stored under `agent/state/sessions/<session_id>/`: `graph.pkl` holds the graph, `query.txt` holds the request, and `nodes/` holds prompts, results, timing, and status.
+Each run prints a session ID. State is stored under `agent/state/sessions/<session_id>/`: `graph.json` holds the graph, `query.txt` holds the request, and `nodes/` holds prompts, results, timing, and status.
 
 From `agent/`, replace `SESSION_ID` with an actual saved ID:
 
@@ -70,4 +70,4 @@ Existing focused tests cover recovery, critic insertion, and reuse of completed 
 uv run python -m pytest tests/test_recovery.py tests/test_recovery_amnesia.py tests/test_critic_autoinsert.py
 ```
 
-With the gateway running, use `bash run_demo.sh hello` from the repository root for the basic demo, or `bash run_demo.sh tests` for the runner's test suite.
+With the gateway running, `uv run python flow.py "what is 2+2"` from `agent/` is the quickest end-to-end check. `uv run pytest tests/` runs the full suite.

@@ -20,8 +20,8 @@ import json
 import sys
 from pathlib import Path
 
-from persistence import SessionStore, list_sessions
-from schemas import NodeState
+from core.persistence import SessionStore, list_sessions
+from core.schemas import NodeState
 
 
 def _print_block(i: int, n: int, st: NodeState) -> None:

@@ -2,7 +2,7 @@
 # /v1/chat) to a preferred provider name. Callers can still override
 # per-call by sending provider=... explicitly.
 #
-# Defaults below mirror the brief's design rationale. The Planner needs
+# The defaults below follow one rationale. The Planner needs
 # the strongest reasoner available locally, the bulky text skills go to
 # Gemini for long-context comfort, and the cheap classifier-style
 # skills land on the small fast workers.

@@ -22,18 +22,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from flow import Graph
-from schemas import AgentResult
-from skills import SkillRegistry
-
+from core.schemas import AgentResult
+from core.skills import SkillRegistry
 
 def _ok_result(skill: str) -> AgentResult:
     """Synthetic successful result with no dynamic successors."""
     return AgentResult(success=True, agent_name=skill,
                        output={"ok": True}, elapsed_s=0.1)
-
 
 def test_critic_spliced_on_pre_planned_distiller_to_formatter():
     """The reported case: Planner pre-wires distiller → formatter,
@@ -79,7 +75,6 @@ def test_critic_spliced_on_pre_planned_distiller_to_formatter():
     assert distiller in g.g.nodes[critic_nid]["inputs"], \
         f"auto-inserted critic missing target in inputs: {g.g.nodes[critic_nid]['inputs']}"
 
-
 def test_critic_skipped_when_child_is_already_a_critic():
     """If the Planner emitted a Critic explicitly between distiller and
     its consumer, the auto-insertion must NOT add a second one."""
@@ -98,7 +93,6 @@ def test_critic_skipped_when_child_is_already_a_critic():
     # Original edges remain intact.
     assert g.g.has_edge(distiller, user_critic)
     assert g.g.has_edge(user_critic, formatter)
-
 
 def test_critic_spliced_on_each_outgoing_edge():
     """If a critic-tagged node has multiple outgoing edges (one to a
@@ -120,7 +114,6 @@ def test_critic_spliced_on_each_outgoing_edge():
     children = {g.g.nodes[c]["metadata"]["child"] for c in critic_nodes}
     assert children == {fmt_a, fmt_b}, \
         f"expected critics targeting both formatters, got children={children}"
-
 
 def test_non_critic_skill_does_not_trigger_auto_insertion():
     """Regression guard: only `critic: true` skills should trigger the

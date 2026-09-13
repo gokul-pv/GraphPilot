@@ -39,7 +39,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from settings import GATEWAY_URL
+from services.gateway import GATEWAY_URL
 
 from .client import CuaClient, CuaError, WindowRef
 

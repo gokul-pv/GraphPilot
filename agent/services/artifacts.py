@@ -12,9 +12,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from schemas import Artifact
+from core.schemas import Artifact
 
-STORE = Path(__file__).parent / "state" / "artifacts"
+AGENT_ROOT = Path(__file__).resolve().parents[1]
+STORE = AGENT_ROOT / "state" / "artifacts"
 STORE.mkdir(parents=True, exist_ok=True)
 
 

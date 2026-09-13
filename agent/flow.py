@@ -23,12 +23,12 @@ from typing import Callable
 
 import networkx as nx
 
-import memory as memory_svc
-from gateway import ensure_gateway
-from persistence import SessionStore, graph_to_payload
-from recovery import handle_critic_verdict, plan_recovery
-from schemas import AgentResult, NodeState
-from skills import SkillRegistry, run_skill
+from services import memory as memory_svc
+from services.gateway import ensure_gateway
+from core.persistence import SessionStore, graph_to_payload
+from core.recovery import handle_critic_verdict, plan_recovery
+from core.schemas import AgentResult, NodeState
+from core.skills import SkillRegistry, run_skill
 
 MAX_NODES = 60  # hard cap so a Planner loop cannot grow forever
 
@@ -241,12 +241,11 @@ class Executor:
         formatter_answer: str | None = None
         executed_count = 0
         wave_index = 0
-        # Per-target cap for critic-fail recovery; see P1 #5 fix below.
+        # Per-target cap for critic-fail recovery.
         recovered_branches: dict[str, bool] = {}
-        # NOTES_RUNS round-3 review #5: when the cap fires, the branch is
-        # skipped silently and the final answer reflects missing data with
-        # no flag. Track every second-or-later critic-fail here so the
-        # final log can surface it.
+        # When the cap fires the branch is skipped, and without this the
+        # final answer would reflect missing data with no flag. Track every
+        # second-or-later critic-fail so the final log can surface it.
         critic_fail_cap_hit: list[str] = []
 
         while True:

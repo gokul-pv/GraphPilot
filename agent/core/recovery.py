@@ -5,7 +5,7 @@ Two surfaces:
   - `classify_failure(error_text)` buckets a failure into one of
     {transient, validation_error, upstream_failure} so the orchestrator
     can tell apart a gateway 503 from a malformed plan from a genuine
-    upstream miss (NOTES_RUNS round-2 review P0 #3).
+    upstream miss.
 
   - `plan_recovery(...)` is the predicate the Executor consults to
     decide WHAT to do with a failure: "skip", "replan", or "critic_fail".
@@ -100,7 +100,7 @@ def plan_recovery(
 
 def handle_critic_verdict(nid: str, result, graph, recovered_branches: dict,
                           cap_hit: list) -> bool:
-    """Critic-fail policy (P1 #5). Returns True when the caller should skip
+    """Critic-fail policy. Returns True when the caller should skip
     the normal `extend_from` (because the Critic emitted `fail` and we
     handled it by splicing a recovery Planner). False on `pass`.
 

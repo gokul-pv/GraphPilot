@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from settings import GATEWAY_URL
+from services.gateway import GATEWAY_URL
 from computer.client import CuaClient, CuaError
 from computer.driver import ComputerDriver, DriverConfig
 

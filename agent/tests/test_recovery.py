@@ -21,12 +21,10 @@ from pathlib import Path
 
 # When running via pytest the cwd is the tests/ dir; the recovery module
 # sits one level up.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
-from recovery import classify_failure, handle_critic_verdict, plan_recovery
-from schemas import AgentResult
-
+from core.recovery import classify_failure, handle_critic_verdict, plan_recovery
+from core.schemas import AgentResult
 
 # Strings the gateway actually emits today. Each tuple is
 # (error_text, expected_reason).
@@ -53,21 +51,17 @@ GENUINE_UPSTREAM_STRINGS = [
     "",  # empty error text — treat as upstream by convention
 ]
 
-
 @pytest.mark.parametrize("err", GATEWAY_TRANSIENT_STRINGS)
 def test_classify_transient(err: str) -> None:
     assert classify_failure(err) == "transient", f"misclassified transient: {err!r}"
-
 
 @pytest.mark.parametrize("err", GATEWAY_VALIDATION_STRINGS)
 def test_classify_validation(err: str) -> None:
     assert classify_failure(err) == "validation_error", f"misclassified validation: {err!r}"
 
-
 @pytest.mark.parametrize("err", GENUINE_UPSTREAM_STRINGS)
 def test_classify_upstream(err: str) -> None:
     assert classify_failure(err) == "upstream_failure", f"misclassified upstream: {err!r}"
-
 
 def test_plan_recovery_transient_skips() -> None:
     d = plan_recovery(failed_skill="researcher",
@@ -77,14 +71,12 @@ def test_plan_recovery_transient_skips() -> None:
     assert d.reason == "transient"
     assert d.failure_report is None
 
-
 def test_plan_recovery_validation_skips() -> None:
     d = plan_recovery(failed_skill="planner",
                       error_text=GATEWAY_VALIDATION_STRINGS[0],
                       failed_node_id="n:1")
     assert d.action == "skip"
     assert d.reason == "validation_error"
-
 
 def test_plan_recovery_planner_failure_never_replans() -> None:
     # Even genuinely-upstream "planner failed" never triggers a re-plan;
@@ -95,7 +87,6 @@ def test_plan_recovery_planner_failure_never_replans() -> None:
     assert d.action == "skip"
     assert d.reason == "upstream_failure"
 
-
 def test_plan_recovery_upstream_failure_replans() -> None:
     d = plan_recovery(failed_skill="researcher",
                       error_text="Tavily returned no results",
@@ -104,7 +95,6 @@ def test_plan_recovery_upstream_failure_replans() -> None:
     assert d.reason == "upstream_failure"
     assert d.failure_report and "n:7" in d.failure_report
     assert "researcher" in d.failure_report
-
 
 # ── Critic-fail splice tests (review round-3 #3) ────────────────────────────
 #
@@ -137,7 +127,6 @@ class _StubGraph:
         self._added.append((nid, skill, list(inputs), dict(metadata or {})))
         return nid
 
-
 def _seed_critic_branch(graph: _StubGraph, *, auto_inserted: bool):
     """Build target → critic → child shape. When auto_inserted=True the
     critic carries target/child in metadata (as Graph.extend_from sets);
@@ -153,11 +142,9 @@ def _seed_critic_branch(graph: _StubGraph, *, auto_inserted: bool):
     graph.g.add_edge("n:t", "n:c")
     graph.g.add_edge("n:c", "n:f")
 
-
 def _fail_result() -> AgentResult:
     return AgentResult(success=True, agent_name="critic",
                        output={"verdict": "fail", "rationale": "syllables off"})
-
 
 def test_critic_fail_auto_inserted_splices_planner_and_skips_child() -> None:
     g = _StubGraph()
@@ -173,7 +160,6 @@ def test_critic_fail_auto_inserted_splices_planner_and_skips_child() -> None:
     assert g._added[0][3]["recovery_reason"] == "critic_fail"
     assert cap == []
 
-
 def test_critic_fail_explicit_critic_derives_target_and_child_from_graph() -> None:
     g = _StubGraph()
     _seed_critic_branch(g, auto_inserted=False)
@@ -185,7 +171,6 @@ def test_critic_fail_explicit_critic_derives_target_and_child_from_graph() -> No
     assert g._added[0][3]["recovers"] == "n:t"
     assert cap == []
 
-
 def test_critic_fail_cap_fires_on_second_failure_for_same_target() -> None:
     g = _StubGraph()
     _seed_critic_branch(g, auto_inserted=True)
@@ -195,7 +180,6 @@ def test_critic_fail_cap_fires_on_second_failure_for_same_target() -> None:
     assert handled is True
     assert cap == ["n:t"], "cap-hit should be surfaced for future logging"
     assert [a[1] for a in g._added] == [], "no second planner should be queued"
-
 
 def test_critic_pass_returns_false_no_splice() -> None:
     g = _StubGraph()

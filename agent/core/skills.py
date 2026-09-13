@@ -25,11 +25,11 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-import artifacts as artifacts_svc
-from gateway import LLM, estimate_cost
-from schemas import AgentResult, NodeSpec
+from services import artifacts as artifacts_svc
+from services.gateway import LLM, estimate_cost
+from .schemas import AgentResult, NodeSpec
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parents[1]
 AGENT_CONFIG_PATH = ROOT / "agent_config.yaml"
 
 
@@ -44,7 +44,7 @@ class Skill:
         self.internal_successors: list[str] = cfg.get("internal_successors", []) or []
         self.critic: bool = bool(cfg.get("critic", False))
         self.provider_pin: str | None = cfg.get("provider_pin")
-        # P2 #10: per-skill temperature / max_tokens come from the yaml so
+        # Per-skill temperature / max_tokens come from the yaml so
         # tuning a single skill no longer requires a code edit. Defaults
         # are deliberately conservative; a skill that wants exploration
         # (Researcher) bumps temperature; a skill that wants determinism
@@ -286,7 +286,7 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
                 error="no code in upstream coder output",
                 elapsed_s=time.time() - started,
             ), rendered
-        from sandbox import run_python
+        from services.sandbox import run_python
         out = run_python(code)
         return AgentResult(
             success=(out["exit_code"] == 0 and not out["timed_out"]),
@@ -383,7 +383,7 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
         # Multi-turn tool-use loop. mcp_runner opens one MCP stdio session
         # per skill invocation, dispatches each tool_call the model emits,
         # and feeds the results back until the model produces final text.
-        from mcp_runner import run_with_tools
+        from services.mcp_runner import run_with_tools
         reply = await run_with_tools(
             prompt=rendered,
             tools_payload=tools,
@@ -406,8 +406,8 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
     parsed = parse_skill_json(reply.get("text", ""))
 
     # Lift orchestrator-recognised fields out of the skill's JSON.
-    # NOTES_RUNS feedback P0 #1: malformed successors used to be silently
-    # dropped, which surfaces later as a baffling "missing node" bug.
+    # Malformed successors used to be silently dropped, which surfaces later
+    # as a baffling "missing node" bug.
     # Now: log the offending JSON + the validation error, then fail the
     # node so the failure path (and replay) surfaces it.
     raw_successors = parsed.pop("successors", []) or []

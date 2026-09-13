@@ -37,8 +37,8 @@ import string
 import time
 from pathlib import Path
 
-from schemas import AgentResult, ComputerOutput, NodeSpec
-from settings import GATEWAY_URL
+from core.schemas import AgentResult, ComputerOutput, NodeSpec
+from services.gateway import GATEWAY_URL
 
 from .client import CuaClient, CuaError, WindowRef
 from .driver import ComputerDriver, DriverConfig, DriverResult

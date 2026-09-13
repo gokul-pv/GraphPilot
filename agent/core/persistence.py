@@ -22,9 +22,10 @@ from pathlib import Path
 
 import networkx as nx
 
-from schemas import AgentResult, NodeState
+from .schemas import AgentResult, NodeState
 
-SESSIONS_ROOT = Path(__file__).parent / "state" / "sessions"
+AGENT_ROOT = Path(__file__).resolve().parents[1]
+SESSIONS_ROOT = AGENT_ROOT / "state" / "sessions"
 
 
 class SessionLoadError(RuntimeError):
@@ -95,7 +96,7 @@ class SessionStore:
 
     @property
     def graph_path(self) -> Path:
-        # P1 #6: graph is persisted as JSON via nx.node_link_data so the file
+        # Graph is persisted as JSON via nx.node_link_data so the file
         # is `cat`-able by hand and the format survives a Python upgrade.
         return self.dir / "graph.json"
 
@@ -125,12 +126,11 @@ class SessionStore:
         if self.graph_path.exists():
             payload = json.loads(self.graph_path.read_text())
             g = nx.node_link_graph(payload, edges="edges", directed=True)
-            # NOTES_RUNS round-3 review #4: a write tagged a node's `result`
-            # as a typed AgentResult via `_result_typed`. If the dict no
-            # longer round-trips through AgentResult.model_validate, that
-            # is silent data corruption — the previous "keep the dict, let
-            # downstream isinstance checks handle it" was exactly the
-            # silent-degradation pattern we just fixed in P0 #2.
+            # A write tagged a node's `result` as a typed AgentResult via
+            # `_result_typed`. If the dict no longer round-trips through
+            # AgentResult.model_validate, that is silent data corruption —
+            # "keep the dict and let downstream isinstance checks handle it"
+            # degrades silently, which is exactly what we want to avoid.
             # Raise instead; the SessionLoadError surfaces the bad file path
             # and the validation message so the operator can act on it.
             for nid, d in g.nodes(data=True):
@@ -179,9 +179,9 @@ class SessionStore:
         """Load every persisted NodeState in this session. Corrupt or
         partially-written files (the typical cause is a process kill between
         the temp-file write and the atomic rename) are skipped with a clear
-        warning to stderr — never silently dropped. NOTES_RUNS feedback
-        P0 #2: a bare `except Exception: continue` here was killing resume
-        invisibly when one node file was bad."""
+        warning to stderr — never silently dropped. A bare
+        `except Exception: continue` here used to kill resume invisibly
+        whenever one node file was bad."""
         import sys
         states: list[NodeState] = []
         for p in sorted(self.nodes_dir.glob("n_*.json")):

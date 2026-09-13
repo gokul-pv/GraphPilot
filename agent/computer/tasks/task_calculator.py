@@ -2,7 +2,7 @@
 """Task A — Calculator arithmetic via deterministic hotkeys.
 
 Cascade layer: Layer 2a (deterministic)
-Vision calls:  ZERO  ← assignment constraint satisfied
+Vision calls:  ZERO  ← handled entirely without screenshots
 LLM calls:     ZERO  (pure key sequence)
 
 What it does:

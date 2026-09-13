@@ -24,19 +24,17 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import gateway as gateway_mod
+from services import gateway as gateway_mod
 
 gateway_mod.ensure_gateway = lambda: None  # before api imports it
 
 import api as api_mod
 import flow as flow_mod
-import persistence as persistence_mod
-from events import EventBus
+from core import persistence as persistence_mod
+from core.events import EventBus
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from schemas import AgentResult, NodeSpec
-
+from core.schemas import AgentResult, NodeSpec
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -89,7 +87,6 @@ class _Sandbox:
         api_mod.runner = self._runner
         self._tmp.cleanup()
 
-
 class _StubExecutor:
     """Executor without ensure_gateway; delegates to the real run loop."""
 
@@ -101,12 +98,10 @@ class _StubExecutor:
         ex.registry = self.registry
         return await ex.run(query, session_id=session_id, resume=resume, emit=emit)
 
-
 def _result(skill: str, **output) -> AgentResult:
     return AgentResult(success=True, agent_name=skill, output=output,
                        elapsed_s=0.01, provider="stub", model="stub-1",
                        input_tokens=120, output_tokens=30, cost=0.000045)
-
 
 async def _planner_then_formatter(skill, nid, nodes, sid, query, fr, memory_hits=None):
     if skill.name == "planner":
@@ -115,7 +110,6 @@ async def _planner_then_formatter(skill, nid, nodes, sid, query, fr, memory_hits
                                  metadata={"label": "out"})]
         return r, "planner prompt"
     return _result("formatter", final_answer="forty two"), "formatter prompt"
-
 
 def _wait_for(client: TestClient, sid: str, state: str, tries: int = 400) -> dict:
     """Poll the run status until it reaches `state`.
@@ -136,7 +130,6 @@ def _wait_for(client: TestClient, sid: str, state: str, tries: int = 400) -> dic
         # attempt in well under the time a single node takes.
         time.sleep(0.01)
     raise AssertionError(f"{sid} never reached {state}: {body}")
-
 
 # ── path safety ──────────────────────────────────────────────────────────────
 
@@ -177,7 +170,6 @@ def test_hostile_ids_never_create_a_session_directory() -> None:
             client.post(f"/api/runs/{bad}/resume")
         assert list(root.iterdir()) == []
 
-
 def test_the_validator_rejects_traversal_directly() -> None:
     """The routing layer is one guard; this is the one that must hold."""
     from fastapi import HTTPException
@@ -193,20 +185,47 @@ def test_the_validator_rejects_traversal_directly() -> None:
     for good in ("run-211b1147", "s8-a0ac4134", "my_run.2", "A-1"):
         assert api_mod._valid_sid(good) == good
 
-
 def test_unknown_session_is_a_404() -> None:
     with _Sandbox() as sb:
         assert sb.client.get("/api/sessions/run-nothere").status_code == 404
 
-
 def test_unmatched_api_paths_do_not_fall_through_to_the_spa() -> None:
-    """With a build present the SPA catch-all is registered last; it must not
-    answer a mistyped API path with 200 and a page of HTML."""
-    with _Sandbox() as sb:
-        r = sb.client.get("/api/no-such-endpoint")
-        assert r.status_code == 404
-        assert 'text/html' not in r.headers.get('content-type', '')
+    """The SPA catch-all is registered last, so it sees every unmatched path.
+    It must not answer a mistyped API path with 200 and a page of HTML.
 
+    This builds a throwaway dist and mounts it explicitly. Asserting against
+    the real `app` would prove nothing: with no frontend build present the
+    catch-all is never registered, so the 404 would come from FastAPI's
+    default and the guard would go untested.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        dist = Path(tmp)
+        (dist / "assets").mkdir()
+        (dist / "index.html").write_text("<!doctype html><title>stub</title>")
+
+        app = FastAPI()
+
+        @app.get("/api/health")
+        async def _health() -> dict:
+            return {"ok": True}
+
+        api_mod.mount_frontend(app, dist)
+
+        with TestClient(app) as client:
+            # The guard: an unmatched /api/ path is a JSON 404, not the SPA.
+            r = client.get("/api/no-such-endpoint")
+            assert r.status_code == 404
+            assert "text/html" not in r.headers.get("content-type", "")
+
+            # ...while a real API route still answers, and an app route falls
+            # through to index.html, which is what the catch-all is *for*.
+            assert client.get("/api/health").status_code == 200
+            spa = client.get("/some/client/route")
+            assert spa.status_code == 200
+            assert "<title>stub</title>" in spa.text
+
+            # And the containment check still holds.
+            assert "<title>stub</title>" in client.get("/../../etc/passwd").text
 
 def test_malformed_ids_are_rejected_on_run_creation() -> None:
     with _Sandbox() as sb:
@@ -214,12 +233,10 @@ def test_malformed_ids_are_rejected_on_run_creation() -> None:
         r = client.post("/api/runs", json={"query": "hi", "session_id": "../evil"})
         assert r.status_code == 400
 
-
 def test_empty_query_is_rejected() -> None:
     with _Sandbox() as sb:
         client = sb.client
         assert client.post("/api/runs", json={"query": ""}).status_code == 422
-
 
 # ── reads ────────────────────────────────────────────────────────────────────
 
@@ -227,7 +244,6 @@ def test_empty_install_lists_no_sessions() -> None:
     with _Sandbox() as sb:
         client = sb.client
         assert client.get("/api/sessions").json() == {"sessions": []}
-
 
 def test_corrupt_graph_degrades_to_a_row_instead_of_a_500() -> None:
     with _Sandbox() as sb:
@@ -244,7 +260,6 @@ def test_corrupt_graph_degrades_to_a_row_instead_of_a_500() -> None:
         # The detail view is honest about it rather than pretending.
         assert client.get("/api/sessions/run-broken").status_code == 404
 
-
 def test_skills_catalogue_matches_the_yaml() -> None:
     with _Sandbox() as sb:
         client = sb.client
@@ -255,7 +270,6 @@ def test_skills_catalogue_matches_the_yaml() -> None:
         assert skills["planner"]["critic"] is False
         assert "web_search" in skills["researcher"]["tools_allowed"]
         assert skills["planner"]["description"]
-
 
 # ── run lifecycle ────────────────────────────────────────────────────────────
 
@@ -281,7 +295,6 @@ def test_run_returns_a_session_id_then_completes() -> None:
         assert row["input_tokens"] == 240      # both nodes, summed
         assert row["providers"] == ["stub"]
 
-
 def test_session_detail_exposes_graph_nodes_and_prompts() -> None:
     with _Sandbox(_planner_then_formatter) as sb:
         client = sb.client
@@ -306,7 +319,6 @@ def test_session_detail_exposes_graph_nodes_and_prompts() -> None:
         node = client.get(f"/api/sessions/{sid}/nodes/n:2").json()
         assert node["result"]["model"] == "stub-1"
         assert node["result"]["cost"] == 0.000045
-
 
 def test_label_wired_successors_produce_edges() -> None:
     """The connected case, against which the disconnected one is the contrast.
@@ -336,7 +348,6 @@ def test_label_wired_successors_produce_edges() -> None:
         assert ("n:1", "n:2") in edges and ("n:1", "n:3") in edges   # structural
         assert ("n:2", "n:4") in edges and ("n:3", "n:4") in edges   # label-wired
 
-
 def test_duplicate_run_on_a_live_session_conflicts() -> None:
     async def slow(skill, nid, nodes, sid, query, fr, memory_hits=None):
         await asyncio.sleep(0.2)
@@ -349,18 +360,15 @@ def test_duplicate_run_on_a_live_session_conflicts() -> None:
         assert second.status_code == 409
         _wait_for(client, sid, "complete")
 
-
 def test_cancelling_an_idle_session_conflicts() -> None:
     with _Sandbox() as sb:
         client = sb.client
         assert client.post("/api/runs/run-nothing/cancel").status_code == 409
 
-
 def test_resume_requires_an_existing_session() -> None:
     with _Sandbox() as sb:
         client = sb.client
         assert client.post("/api/runs/run-nothing/resume").status_code == 404
-
 
 def test_status_of_an_unknown_run_is_reported_not_raised() -> None:
     with _Sandbox() as sb:
@@ -368,14 +376,12 @@ def test_status_of_an_unknown_run_is_reported_not_raised() -> None:
         body = client.get("/api/runs/run-nothing/status").json()
         assert body["state"] == "unknown"
 
-
 # ── SSE ──────────────────────────────────────────────────────────────────────
 
 def _parse_sse(text: str) -> list[dict]:
     """Pull the JSON payloads out of an SSE body."""
     return [json.loads(line[len("data: "):])
             for line in text.splitlines() if line.startswith("data: ")]
-
 
 def test_event_stream_replays_a_finished_run_from_the_start() -> None:
     """The stream is opened after the run starts, so replay is the normal case."""
@@ -397,7 +403,6 @@ def test_event_stream_replays_a_finished_run_from_the_start() -> None:
         # seq is contiguous, so a client can detect a dropped frame.
         assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
 
-
 def test_event_stream_resumes_from_a_sequence_number() -> None:
     with _Sandbox(_planner_then_formatter) as sb:
         client = sb.client
@@ -411,7 +416,6 @@ def test_event_stream_resumes_from_a_sequence_number() -> None:
             resumed = _parse_sse(r.read().decode())
 
         assert [e["seq"] for e in resumed] == [e["seq"] for e in all_events[3:]]
-
 
 def test_node_complete_frames_carry_the_inspector_payload() -> None:
     with _Sandbox(_planner_then_formatter) as sb:
@@ -432,7 +436,6 @@ def test_node_complete_frames_carry_the_inspector_payload() -> None:
         for e in events:
             if "graph" in e:
                 json.dumps(e["graph"])
-
 
 def test_failed_run_emits_run_failed_and_records_the_error() -> None:
     async def explode(skill, nid, nodes, sid, query, fr, memory_hits=None):

@@ -26,11 +26,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from gateway import LLM, embed as _gateway_embed, ensure_gateway
-from schemas import MemoryItem, ToolCall, new_id
-from vector_index import VectorIndex
+from .gateway import LLM, embed as _gateway_embed, ensure_gateway
+from core.schemas import MemoryItem, ToolCall, new_id
+from .vector_index import VectorIndex
 
-STATE_PATH = Path(__file__).parent / "state" / "memory.json"
+AGENT_ROOT = Path(__file__).resolve().parents[1]
+STATE_PATH = AGENT_ROOT / "state" / "memory.json"
 STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Kinds for which an embedding is computed at write time. Scratchpad items
@@ -237,9 +238,9 @@ def remember(
         return _fallback_remember(raw_text, source=source, run_id=run_id, goal_id=goal_id)
 
     parsed = reply.get("parsed") or {}
-    # NOTES_RUNS §6 (2): the classifier at temp=1.0 sometimes returns an
-    # empty `value` dict (the C-run-1 birthday case), discarding the only
-    # structured handle to the raw content. If `value` is empty or missing,
+    # The classifier at temp=1.0 sometimes returns an empty `value` dict,
+    # discarding the only structured handle to the raw content. If `value`
+    # is empty or missing,
     # fall back to {"raw": raw_text} so the originating text is at least
     # always retrievable from the saved item.
     parsed_value = parsed.get("value")
@@ -374,8 +375,8 @@ def add_fact(
 
 
 def clear() -> None:
-    """Wipe persistent memory and the vector index. Useful between
-    assignment attempts."""
+    """Wipe persistent memory and the vector index. Useful when stale facts
+    from earlier runs start leaking into new ones."""
     if STATE_PATH.exists():
         STATE_PATH.unlink()
     VectorIndex(STATE_PATH.parent).clear()

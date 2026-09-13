@@ -22,11 +22,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
 
 from browser.skill import BrowserSkill
-from schemas import NodeSpec
-
+from core.schemas import NodeSpec
 
 # (label, url, goal). Goals are deliberately phrased to demand interaction;
 # they avoid the verbs that would short-circuit to Layer 1 extraction.
@@ -56,7 +54,6 @@ CANDIDATES = [
 
 OUT = HERE.parent / "out" / "natural_vision_search"
 TRACE = OUT / "trace.json"
-
 
 async def try_candidate(label: str, url: str, goal: str) -> dict:
     OUT.mkdir(parents=True, exist_ok=True)
@@ -103,7 +100,6 @@ async def try_candidate(label: str, url: str, goal: str) -> dict:
             "final_url": None,
         }
 
-
 async def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     results = []
@@ -128,7 +124,6 @@ async def main() -> int:
         print(f"  {mark} {r['label']:<18}  path={r['path']:>10}  "
               f"turns={r['turns']}  elapsed={r['elapsed_s']}s")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))

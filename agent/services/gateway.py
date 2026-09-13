@@ -1,21 +1,61 @@
 """Bridge to the LLM gateway.
 
-Auto-starts the gateway if it is not already up, then re-exports its `LLM`
-client, a module-level `embed()` helper, and a cost estimator backed by the
-gateway's own price table.
+Resolves where the gateway lives, auto-starts it if it is not already up, then
+re-exports its `LLM` client, a module-level `embed()` helper, and a cost
+estimator backed by the gateway's own price table.
+
+Importing this module loads the environment, so anything reading a setting out
+of `.env` must import it first — see `env_int`.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 
-from settings import GATEWAY_URL
+AGENT_ROOT = Path(__file__).resolve().parents[1]
+GATEWAY_DIR = AGENT_ROOT.parent / "llm_gateway"
 
-GATEWAY_DIR = Path(__file__).resolve().parents[1] / "llm_gateway"
+# Load the same root .env the gateway server reads, so a port set there moves
+# the server AND every client. `agent/.env` layers on top for agent-only
+# settings; neither overrides a variable already set in the real environment.
+load_dotenv(GATEWAY_DIR.parent / ".env")
+load_dotenv(AGENT_ROOT / ".env")
+
+
+def env_int(*names: str, default: int) -> int:
+    """First env var that is set and parses as an int, else `default`.
+
+    Public because `api.py` needs it too, and taking it from here rather than
+    calling `os.getenv` directly makes the ordering explicit: `.env` is loaded
+    by the import that supplies this function.
+
+    Tolerates a malformed value rather than refusing to boot — a typo'd port
+    should not take the whole agent down.
+    """
+    for n in names:
+        raw = os.getenv(n)
+        if raw:
+            try:
+                return int(raw)
+            except ValueError:
+                print(f"[gateway] ignoring non-numeric {n}={raw!r}")
+    return default
+
+
+# GATEWAY_V9_PORT / LLM_GATEWAY_V9_URL are the pre-rename names, still honoured
+# so an existing .env keeps working.
+GATEWAY_PORT = env_int("GATEWAY_PORT", "GATEWAY_V9_PORT", default=8109)
+GATEWAY_URL = (
+    os.getenv("LLM_GATEWAY_URL")
+    or os.getenv("LLM_GATEWAY_V9_URL")
+    or f"http://localhost:{GATEWAY_PORT}"
+).rstrip("/")
 
 
 def _is_up() -> bool:
@@ -101,5 +141,5 @@ def embed(text: str, task_type: str = "retrieval_document") -> dict:
     return LLM().embed(text, task_type=task_type)
 
 
-__all__ = ["ensure_gateway", "LLM", "GATEWAY_URL", "GATEWAY_DIR", "embed",
-           "estimate_cost"]
+__all__ = ["ensure_gateway", "LLM", "GATEWAY_URL", "GATEWAY_PORT", "GATEWAY_DIR",
+           "env_int", "embed", "estimate_cost"]

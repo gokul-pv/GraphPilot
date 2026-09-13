@@ -21,7 +21,11 @@ dependencies = [
     "trafilatura>=1.12",
     "lxml>=5.2",
     "lxml-html-clean>=0.1",
+    # HTTP API (api.py). uvicorn and sse-starlette arrive transitively via
+    # mcp[cli] but are imported directly, so declare them.
     "fastapi>=0.141.1",
+    "uvicorn>=0.27",
+    "sse-starlette>=2.0",
 ]
 
 [dependency-groups]

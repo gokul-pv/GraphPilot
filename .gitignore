@@ -15,12 +15,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# node / console frontend
-node_modules/
-dist/
-.pnpm-store/
-*.tsbuildinfo
-
 # os
 .DS_Store
 

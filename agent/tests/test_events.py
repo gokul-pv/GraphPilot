@@ -24,14 +24,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import events as events_mod
+from core import events as events_mod
 import flow as flow_mod
-import persistence as persistence_mod
-from events import EventBus
-from schemas import AgentResult, NodeSpec
-
+from core import persistence as persistence_mod
+from core.events import EventBus
+from core.schemas import AgentResult, NodeSpec
 
 # ── the bus in isolation ─────────────────────────────────────────────────────
 
@@ -61,7 +58,6 @@ def test_late_subscriber_replays_then_goes_live() -> None:
     # seq is strictly increasing with no repeats, so a client can spot a gap.
     assert [e["seq"] for e in seen] == [1, 2, 3, 4]
 
-
 def test_subscriber_can_resume_from_a_sequence_number() -> None:
     async def scenario() -> list[int]:
         bus = EventBus()
@@ -71,7 +67,6 @@ def test_subscriber_can_resume_from_a_sequence_number() -> None:
         return [ev["seq"] async for ev in bus.subscribe("s", after_seq=3)]
 
     assert asyncio.run(scenario()) == [4, 5, 6]
-
 
 def test_stream_of_a_finished_run_ends_without_hanging() -> None:
     """Opening the stream of an already-finished run must replay and close."""
@@ -87,7 +82,6 @@ def test_stream_of_a_finished_run_ends_without_hanging() -> None:
 
     assert [e["type"] for e in asyncio.run(run())] == ["run_start", "run_complete"]
 
-
 def test_publish_survives_a_broken_subscriber() -> None:
     """A console bug must never surface as a node failure."""
     bus = EventBus()
@@ -101,11 +95,9 @@ def test_publish_survives_a_broken_subscriber() -> None:
     bus.publish("s", "node_complete", node_id="n:1")   # must not raise
     assert ch.subscribers == set()                      # and drops the bad one
 
-
 def test_emitter_swallows_bad_payloads() -> None:
     emit = EventBus().emitter("s")
     emit("node_complete", node_id="n:1")  # must not raise
-
 
 def test_is_live_flips_on_a_terminal_event() -> None:
     bus = EventBus()
@@ -114,14 +106,12 @@ def test_is_live_flips_on_a_terminal_event() -> None:
     bus.publish("s", "run_complete", answer="")
     assert not bus.is_live("s")
 
-
 # ── the run loop's hooks ─────────────────────────────────────────────────────
 
 def _stub_result(skill: str, **output) -> AgentResult:
     return AgentResult(success=True, agent_name=skill, output=output,
                        elapsed_s=0.01, provider="stub", model="stub-1",
                        input_tokens=100, output_tokens=10)
-
 
 def _drive(monkey_skills) -> list[dict]:
     """Run the executor against a stubbed dispatcher; return the events."""
@@ -148,7 +138,6 @@ def _drive(monkey_skills) -> list[dict]:
             flow_mod.memory_svc.read = original_read
             flow_mod.memory_svc.remember = original_remember
     return captured
-
 
 def test_fan_out_run_emits_waves_in_order() -> None:
     """planner → 3 parallel researchers → formatter."""
@@ -197,7 +186,6 @@ def test_fan_out_run_emits_waves_in_order() -> None:
     assert final["answer"] == "the answer"
     assert final["waves"] == len(waves)
 
-
 def test_node_complete_carries_the_full_inspector_payload() -> None:
     async def fake_run_skill(skill, nid, nodes, sid, query, fr, memory_hits=None):
         if skill.name == "planner":
@@ -220,7 +208,6 @@ def test_node_complete_carries_the_full_inspector_payload() -> None:
     assert node["result"]["input_tokens"] == 100
     assert node["result"]["provider"] == "stub"
 
-
 def test_node_running_precedes_its_completion() -> None:
     async def fake_run_skill(skill, nid, nodes, sid, query, fr, memory_hits=None):
         if skill.name == "planner":
@@ -239,7 +226,6 @@ def test_node_running_precedes_its_completion() -> None:
 
     started = [e for e in evs if e["type"] == "node_running"][0]
     assert started["started_at"] > 0  # a measured timestamp, for live counters
-
 
 def test_graph_payload_is_json_safe_once_results_exist() -> None:
     """Every graph-bearing event must survive json.dumps.
@@ -268,7 +254,6 @@ def test_graph_payload_is_json_safe_once_results_exist() -> None:
     assert last["directed"] is True
     results = [n.get("result") for n in last["nodes"] if n.get("result")]
     assert results and all(isinstance(r, dict) for r in results)
-
 
 def test_cli_path_emits_nothing() -> None:
     """`emit=None` must leave the run loop exactly as it was."""

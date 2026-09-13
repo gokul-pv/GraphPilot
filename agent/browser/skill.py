@@ -34,8 +34,8 @@ import httpx
 import trafilatura
 from playwright.async_api import async_playwright
 
-from schemas import AgentResult, BrowserOutput, NodeSpec
-from settings import GATEWAY_URL
+from core.schemas import AgentResult, BrowserOutput, NodeSpec
+from services.gateway import GATEWAY_URL
 
 from .client import GatewayClient
 from .driver import A11yDriver, DriverConfig, DriverResult, SetOfMarksDriver
@@ -149,8 +149,8 @@ class BrowserSkill:
         url = node.metadata.get("url") or (node.inputs[0] if node.inputs else "")
         goal = node.metadata.get("goal") or "extract main content"
         # Optional escape hatch: skip the natural cascade and pin to a specific
-        # layer. Used by the spec's vision-escalation smoke test when the
-        # natural cascade would short-circuit on a richer earlier layer.
+        # layer. Used by the vision-escalation smoke test, where the natural
+        # cascade would otherwise short-circuit on a richer earlier layer.
         # Values: 'extract' | 'a11y' | 'vision'. Anything else is ignored.
         force_path = node.metadata.get("force_path")
         if not url:

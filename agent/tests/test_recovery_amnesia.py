@@ -26,12 +26,10 @@ import sys
 from pathlib import Path
 
 # tests/ is one level below the package root
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from flow import Graph
-from recovery import plan_recovery
-from schemas import AgentResult
-
+from core.recovery import plan_recovery
+from core.schemas import AgentResult
 
 def _add_completed(graph: Graph, skill: str, output: dict) -> str:
     """Helper: add a node, mark it complete, attach a synthetic result."""
@@ -42,7 +40,6 @@ def _add_completed(graph: Graph, skill: str, output: dict) -> str:
     )
     return nid
 
-
 def _add_failed(graph: Graph, skill: str, error: str) -> str:
     nid = graph.add_node(skill, inputs=[])
     graph.g.nodes[nid]["status"] = "failed"
@@ -50,7 +47,6 @@ def _add_failed(graph: Graph, skill: str, error: str) -> str:
         success=False, agent_name=skill, error=error, elapsed_s=0.1,
     )
     return nid
-
 
 def _simulate_recovery_block(graph: Graph, failed_nid: str) -> str:
     """Mirror the recovery wiring in Executor.run lines 277-292.
@@ -81,7 +77,6 @@ def _simulate_recovery_block(graph: Graph, failed_nid: str) -> str:
                   "prior_complete": prior_complete},
     )
     return rec_nid
-
 
 def test_recovery_planner_carries_prior_complete_siblings():
     """Fan-out of three researchers, one fails; the recovery Planner
@@ -120,7 +115,6 @@ def test_recovery_planner_carries_prior_complete_siblings():
     assert r_ok_a in preds and r_ok_b in preds, \
         f"recovery planner missing edges from prior successes: preds={preds}"
 
-
 def test_recovery_planner_excludes_critics_from_prior_complete():
     """Critics emit verdicts, not data — they should not be wired as
     upstream input to the recovery Planner."""
@@ -136,7 +130,6 @@ def test_recovery_planner_excludes_critics_from_prior_complete():
     assert r_ok in inputs, "successful researcher must be carried forward"
     assert c_ok not in inputs, \
         f"critic {c_ok} should not appear in recovery inputs {inputs}"
-
 
 def test_recovery_planner_with_no_prior_successes_falls_back_to_user_query_only():
     """Empty `prior_complete` (the first-step-failed case) must reduce

@@ -33,9 +33,9 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from gateway import LLM
+from .gateway import LLM
 
-MCP_SERVER = Path(__file__).parent / "mcp_server.py"
+MCP_SERVER = Path(__file__).resolve().parents[1] / "mcp_server.py"
 MAX_TOOL_HOPS = 6  # hard cap so a model that loves tool-use can't cost a fortune
 TOOL_RESULT_PREVIEW = 600  # chars of each tool result kept for the console trace
 
