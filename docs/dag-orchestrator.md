@@ -2,7 +2,7 @@
 
 [Repository overview](../README.md) · [Recorded DAG demo](https://www.youtube.com/watch?v=7seKiAq5N_o)
 
-The orchestrator turns a request into a dependency graph of skills. It uses NetworkX to store the graph and asyncio to run ready nodes in parallel. The main implementation is [flow.py](../agent/flow.py); skill dispatch lives in [skills.py](../agent/skills.py).
+The orchestrator turns a request into a dependency graph of skills. It uses NetworkX to store the graph and asyncio to run ready nodes in parallel. The main implementation is [flow.py](../agent/flow.py); skill dispatch lives in [skills.py](../agent/core/skills.py).
 
 ## Setup
 
@@ -51,6 +51,8 @@ uv run python replay.py SESSION_ID
 ```
 
 Resume retains completed work and resets nodes saved as running to pending. An interrupted browser or desktop action may therefore run again. Replay is a terminal viewer: Enter advances, `p` expands the stored prompt, `o` expands output, and `q` exits.
+
+The [web console](../frontend/README.md) reads the same sessions in a browser, drawing the graph and showing each node's prompt, tokens, and media.
 
 Memory uses FAISS search with keyword fallback. Hits are loaded at session start and shared with the standard skill prompts. Keep embedding configuration consistent when reusing stored memory; see the [gateway guide](../llm_gateway/README.md#embeddings).
 

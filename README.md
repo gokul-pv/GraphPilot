@@ -34,19 +34,17 @@ flowchart LR
 | Browser | HTML extraction, supplied selector actions, accessibility-based interaction, and screenshot-based vision fallback. |
 | macOS desktop | Accessibility reads, scripted actions, text-model control, Electron DOM control, and vision fallback through `cua-driver`. |
 | LLM gateway | Provider selection, automatic failover for unpinned calls, rate limits, retries, tool calls, structured output, batch requests, vision, and embeddings. |
-| Visibility | A JSON + SSE API that streams a run as it executes and reads past runs back off disk, terminal replay, the gateway dashboard, and token usage and estimated cost by agent/session. A web console is planned; there is no frontend in the repo yet. |
+| Visibility | A JSON + SSE API that streams a run as it executes and reads past runs back off disk, terminal replay, the gateway dashboard, a Next.js web console that draws the graph as it grows and keeps each node's prompt and token usage, and estimated cost by agent/session. |
 
 The gateway supports adapters for Gemini, W&B Inference, Groq, OpenRouter, NVIDIA, and Ollama. Enabled providers depend on your configuration. Note that W&B is metered while the rest are free-tier or local — see [Known gaps](llm_gateway/README.md#known-gaps), because the gateway limits requests and tokens but not spend. The coder prompt is currently a stub; its execution hook runs Python in a subprocess with time and output limits, without full OS isolation.
 
-## Three demos
+## Demo
 
-These are recorded demonstrations, not fresh validation runs of this checkout.
+[![GraphPilot: Building a Dynamic DAG-Based AI Agent](https://img.youtube.com/vi/OhUABo8pf2k/maxresdefault.jpg)](https://www.youtube.com/watch?v=OhUABo8pf2k)
 
-| Video | What it shows |
-| --- | --- |
-| [DAG orchestration](https://www.youtube.com/watch?v=7seKiAq5N_o) | Planning, parallel work, result checking, and recovery workflows. |
-| [Hugging Face browser workflow](https://www.youtube.com/watch?v=74mO8zHaTCM) | Finding text-generation models and building a comparison. |
-| [macOS Notes automation](https://www.youtube.com/watch?v=Zgq-_iuWEkM) | Creating a note with the agent cursor overlay enabled. |
+A recorded walkthrough. The guides
+below link shorter recordings of the browser, desktop, and orchestration paths
+individually.
 
 ## Quick start
 
@@ -82,6 +80,19 @@ on <http://localhost:8110>: `POST /api/runs` starts a run,
 `GET /api/runs/<id>/events` streams it as server-sent events, and
 `GET /api/sessions` reads past runs. It starts the gateway itself if it is not
 already up.
+
+**Web console:** with that API running, install once and start the console:
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+It is at <http://localhost:3000> and proxies the API on :8110. For a
+single-origin setup, `pnpm build:export` writes a static build that `api.py`
+serves itself at <http://localhost:8110>. Requires Node 24 and pnpm; see
+[frontend/README.md](frontend/README.md).
 
 **Browser tasks:** install Playwright Chromium using the [browser guide](docs/browser-automation.md). Web research optionally reads `TAVILY_API_KEY` from the root `.env`; search falls back to DDGS.
 

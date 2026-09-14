@@ -41,4 +41,4 @@ uv run python replay.py SESSION_ID
 
 Press `o` on a browser node to inspect its output and chosen path. Node records live under `agent/state/sessions/SESSION_ID/nodes/`. Accessibility and vision runs can save screenshots and element legends under `agent/state/sessions/SESSION_ID/browser/`, grouped by attempt and layer. Extraction-only runs do not produce a screenshot trail.
 
-Use the gateway dashboard at <http://localhost:8109> and `GET /v1/cost/by_agent?session=SESSION_ID` for recorded usage. The checkout provides terminal replay and saved artifacts; it does not include an HTML report generator or a bundled replay report.
+Use the gateway dashboard at <http://localhost:8109> and `GET /v1/cost/by_agent?session=SESSION_ID` for recorded usage. The [web console](../frontend/README.md) renders these screenshots with their element legends, turn by turn. There is no standalone HTML report generator.

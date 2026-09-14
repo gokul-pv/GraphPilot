@@ -73,4 +73,6 @@ uv run python replay.py SESSION_ID
 
 Replace `SESSION_ID` with the printed ID. This terminal viewer shows node data; it does not play desktop video.
 
+The [web console](../frontend/README.md) does play them — it seeks the recording by turn, overlays the recorded cursor track, and shows the accessibility tree the model saw before each action.
+
 Computer-node recordings are attempted under `agent/state/sessions/SESSION_ID/computer/trajectory/NODE_ID/`; vision screenshots go under `computer/screenshots/NODE_ID/`. Recording is best-effort. Standalone scripts instead print their own recording directory, such as `state/sessions/notes-TIMESTAMP/computer/trajectory/`. They do not create a DAG graph for `replay.py`. Use the driver reference for native recording and playback commands.
