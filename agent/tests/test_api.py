@@ -452,3 +452,272 @@ def test_failed_run_emits_run_failed_and_records_the_error() -> None:
         assert "failed" in statuses
         failed = [n for n in body["graph"]["nodes"] if n["status"] == "failed"][0]
         assert "dispatcher exploded" in failed["result"]["error"]
+
+# ── media manifest and file serving ──────────────────────────────────────────
+
+def _trajectory_fixture(root: Path, sid: str = "run-media") -> Path:
+    """A session carrying one browser run and one cua-driver trajectory.
+
+    Mirrors the real layout in state/sessions/run-5ee5ecc6, including the two
+    details most likely to be got wrong: the trajectory directory is named by
+    raw node id, so it contains a colon, and session.json records the video
+    with an `absolute_path` that must never reach a client.
+    """
+    base = root / sid
+    (base / "nodes").mkdir(parents=True)
+    (base / "graph.json").write_text('{"nodes": [], "edges": []}')
+    (base / "query.txt").write_text("open calculator")
+
+    layer = base / "browser" / "browser_1789306083" / "a11y"
+    layer.mkdir(parents=True)
+    (layer / "turn_01_raw.png").write_bytes(b"\x89PNG raw")
+    (layer / "turn_01_legend.txt").write_text("[0] button")
+    (layer / "turn_02_raw.png").write_bytes(b"\x89PNG raw2")
+
+    traj = base / "computer" / "trajectory" / "n:2"
+    traj.mkdir(parents=True)
+    (traj / "recording.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    (traj / "cursor.jsonl").write_text('{"t_ms":155.0,"x":804.7,"y":816.24}\n')
+    (traj / "session.json").write_text(json.dumps({
+        "schema_version": 1,
+        "started_at_monotonic_ms": 1789367011410,
+        "video": {"path": "recording.mp4", "duration_ms": 29717,
+                  "present": True, "finalized": True,
+                  "absolute_path": "/Users/someone/secret/recording.mp4"},
+        "cursor": {"present": True, "sample_count": 794},
+    }))
+
+    t1 = traj / "turn-00001"
+    t1.mkdir()
+    (t1 / "action.json").write_text(json.dumps({
+        "tool": "start_session",
+        "arguments": {"session": "computer-n:2-pg0pcw"},
+        "result_summary": "✅ Session is active.",
+        "t_ms_from_session_start": 30,
+        "t_start_ms_from_session_start": 30,
+    }))
+    (t1 / "screenshot.png").write_bytes(b"\x89PNG s1")
+
+    t3 = traj / "turn-00003"
+    t3.mkdir()
+    (t3 / "action.json").write_text(json.dumps({
+        "tool": "click",
+        "arguments": {"element_index": 2, "session": "computer-n:2-pg0pcw"},
+        "result_summary": "✅ Performed AXPress on [2] AXButton.",
+        "click_point": {"x": 176.0, "y": 314.0},
+        "t_ms_from_session_start": 6627,
+        "t_start_ms_from_session_start": 4021,
+    }))
+    (t3 / "screenshot.png").write_bytes(b"\x89PNG s3")
+    (t3 / "click.png").write_bytes(b"\x89PNG c3")
+    (t3 / "app_state.json").write_text('{"element_count": 249, "tree_markdown": "- [0] AXWindow"}')
+    return base
+
+def test_artifact_manifest_describes_browser_and_trajectory_media() -> None:
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        _trajectory_fixture(root)
+
+        body = client.get("/api/sessions/run-media/artifacts").json()
+
+        browser = body["browser"]
+        assert len(browser) == 1
+        assert browser[0]["run"] == "browser_1789306083"
+        assert browser[0]["layer"] == "a11y"
+        turns = browser[0]["turns"]
+        assert [t["turn"] for t in turns] == [1, 2]
+        assert turns[0]["raw"] == "browser/browser_1789306083/a11y/turn_01_raw.png"
+        assert turns[0]["legend"].endswith("turn_01_legend.txt")
+        # The a11y layer screenshots without annotating, so there is no
+        # set-of-marks image — the field is present and null, not missing.
+        assert turns[0]["marked"] is None
+
+        traj = body["computer"]["trajectories"]
+        assert len(traj) == 1
+        t = traj[0]
+        assert t["node_id"] == "n:2"
+        assert t["video"]["path"] == "computer/trajectory/n:2/recording.mp4"
+        assert t["video"]["duration_ms"] == 29717
+        assert t["video"]["finalized"] is True
+        assert t["cursor"]["sample_count"] == 794
+        assert t["started_at_monotonic_ms"] == 1789367011410
+        # Recovered from the first turn's arguments. Without it, this node's
+        # gateway spend cannot be matched back to the run.
+        assert t["cua_session"] == "computer-n:2-pg0pcw"
+
+        # Turns are ordered by their number, not by directory iteration order.
+        assert [x["turn"] for x in t["turns"]] == [1, 3]
+        click = t["turns"][1]
+        assert click["tool"] == "click"
+        assert click["click_point"] == {"x": 176.0, "y": 314.0}
+        assert click["t_ms"] == 6627 and click["t_start_ms"] == 4021
+        assert click["app_state"].endswith("turn-00003/app_state.json")
+        # start_session captures no app state and is not a click.
+        assert t["turns"][0]["app_state"] is None
+        assert t["turns"][0]["click"] is None
+
+def test_manifest_never_leaks_an_absolute_path() -> None:
+    """session.json records the recorder's own absolute path. Every path in
+    the manifest must instead be session-relative, because they are handed
+    straight back to the files route."""
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        _trajectory_fixture(root)
+        raw = json.dumps(client.get("/api/sessions/run-media/artifacts").json())
+        assert "/Users/someone/secret" not in raw
+        assert str(root) not in raw
+
+def test_manifest_is_empty_but_well_formed_without_media() -> None:
+    """The no-media path still returns every key, so the console can render
+    without optional-chaining each access."""
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        (root / "run-bare" / "nodes").mkdir(parents=True)
+        (root / "run-bare" / "graph.json").write_text('{"nodes": [], "edges": []}')
+        body = client.get("/api/sessions/run-bare/artifacts").json()
+        assert body["browser"] == []
+        assert body["computer"] == {"screenshots": [], "trajectories": []}
+
+def test_half_written_trajectory_degrades_instead_of_raising() -> None:
+    """A run killed mid-recording is normal. session.json can be corrupt, or
+    claim a video that was never finalised; neither may 500 the manifest."""
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        base = root / "run-partial"
+        (base / "nodes").mkdir(parents=True)
+        (base / "graph.json").write_text('{"nodes": [], "edges": []}')
+        traj = base / "computer" / "trajectory" / "n:2"
+        traj.mkdir(parents=True)
+        (traj / "session.json").write_text("{ truncated mid-wri")
+        turn = traj / "turn-00001"
+        turn.mkdir()
+        (turn / "screenshot.png").write_bytes(b"\x89PNG")
+
+        t = client.get("/api/sessions/run-partial/artifacts").json()["computer"]["trajectories"]
+        assert len(t) == 1
+        # The manifest promised no video, because the file genuinely is absent.
+        assert t[0]["video"] is None
+        assert t[0]["cursor"] is None
+        assert t[0]["turns"][0]["screenshot"].endswith("turn-00001/screenshot.png")
+        assert t[0]["turns"][0]["tool"] is None
+
+def test_files_route_serves_media_including_colon_node_paths() -> None:
+    """Trajectory directories are named by raw node id, so the path contains a
+    colon. It is legal in a path segment unencoded and clients percent-encode
+    it anyway; both must reach the same file."""
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        _trajectory_fixture(root)
+
+        plain = client.get("/api/sessions/run-media/files/computer/trajectory/n:2/recording.mp4")
+        assert plain.status_code == 200
+        assert plain.headers["content-type"] == "video/mp4"
+        assert plain.content == b"\x00\x00\x00\x18ftypmp42"
+
+        encoded = client.get("/api/sessions/run-media/files/computer/trajectory/n%3A2/recording.mp4")
+        assert encoded.status_code == 200
+        assert encoded.content == plain.content
+
+        # guess_type does not know .jsonl; without an explicit type the cursor
+        # track would be served as text/plain.
+        cursor = client.get("/api/sessions/run-media/files/computer/trajectory/n:2/cursor.jsonl")
+        assert cursor.status_code == 200
+        assert cursor.headers["content-type"].startswith("application/x-ndjson")
+
+        legend = client.get("/api/sessions/run-media/files/browser/browser_1789306083/a11y/turn_01_legend.txt")
+        assert legend.text == "[0] button"
+
+def test_files_route_confines_reads_to_media_directories() -> None:
+    """Two allowlists. Traversal must fail, and so must a file that is inside
+    the session but outside the directories the cascades write — those have
+    typed routes, and a session dir is a plausible place for a future skill to
+    drop something that should never be fetchable as bytes."""
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        _trajectory_fixture(root)
+        outside = root.parent / "outside.png"
+        outside.write_bytes(b"\x89PNG secret")
+
+        escapes = (
+            "../../../etc/passwd",
+            "..%2f..%2f..%2fetc%2fpasswd",
+            "/etc/passwd",
+            f"../{outside.name}",
+            "computer/../../outside.png",
+        )
+        for bad in escapes:
+            r = client.get(f"/api/sessions/run-media/files/{bad}")
+            assert r.status_code == 404, f"{bad} returned {r.status_code}"
+            assert b"secret" not in r.content
+
+        # Inside the session, right suffix, wrong directory.
+        for confined in ("graph.json", "query.txt", "nodes/n_001.json"):
+            assert client.get(
+                f"/api/sessions/run-media/files/{confined}").status_code == 404
+
+        # Inside a media directory, but not a type the console renders.
+        (root / "run-media" / "computer" / "notes.md").write_text("x")
+        assert client.get(
+            "/api/sessions/run-media/files/computer/notes.md").status_code == 415
+
+def test_files_route_follows_symlinks_before_containment() -> None:
+    """resolve() is what makes this hold: a symlink planted inside a media
+    directory points outside, and the check runs on the resolved target."""
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        _trajectory_fixture(root)
+        secret = root.parent / "secret.png"
+        secret.write_bytes(b"\x89PNG secret")
+        link = root / "run-media" / "computer" / "escape.png"
+        link.symlink_to(secret)
+
+        r = client.get("/api/sessions/run-media/files/computer/escape.png")
+        assert r.status_code == 404
+        assert b"secret" not in r.content
+
+def test_media_routes_reject_unknown_and_malformed_sessions() -> None:
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        assert client.get("/api/sessions/run-nothere/artifacts").status_code == 404
+        assert client.get("/api/sessions/run-nothere/files/a.png").status_code == 404
+        for bad in ("../../etc", ".."):
+            client.get(f"/api/sessions/{bad}/artifacts")
+            client.get(f"/api/sessions/{bad}/files/a.png")
+        # Same property as the hostile-id test: nothing was created.
+        assert list(root.iterdir()) == []
+
+def test_session_listing_skips_directories_that_are_not_sessions() -> None:
+    """list_sessions() yields every directory under the sessions root, and
+    tooling leaves unrelated ones behind. An id the listing shows but every
+    other route rejects is a row that 400s the moment it is clicked."""
+    with _Sandbox() as sb:
+        client, root = sb.client, sb.root
+        (root / "run-real" / "nodes").mkdir(parents=True)
+        (root / "run-real" / "graph.json").write_text('{"nodes": [], "edges": []}')
+        (root / ".claude").mkdir()
+        (root / ".DS_Store").mkdir()
+
+        listed = [s["session_id"] for s in client.get("/api/sessions").json()["sessions"]]
+        assert listed == ["run-real"]
+
+def test_frontend_mount_tolerates_either_bundler_layout() -> None:
+    """StaticFiles raises at construction if its directory is missing, so
+    mounting Vite's `assets/` unconditionally makes a Next build fail at
+    import rather than at request time. Both layouts must mount, and a build
+    with neither directory must still serve its index."""
+    for layout in ("assets", "_next", None):
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp)
+            if layout:
+                (dist / layout).mkdir()
+                (dist / layout / "app.js").write_text("console.log(1)")
+            (dist / "index.html").write_text("<!doctype html><title>stub</title>")
+
+            app = FastAPI()
+            api_mod.mount_frontend(app, dist)
+            with TestClient(app) as client:
+                assert client.get("/some/route").status_code == 200
+                if layout:
+                    r = client.get(f"/{layout}/app.js")
+                    assert r.status_code == 200, f"{layout} mount missing"
+                    assert "console.log(1)" in r.text

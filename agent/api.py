@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -43,19 +44,23 @@ import httpx
 import uvicorn
 import yaml
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from core import persistence
+from core import media, persistence
 from core.events import bus
 # Importing gateway also loads .env, which `env_int` below depends on.
 from services.gateway import GATEWAY_URL, ensure_gateway, env_int
 from core.persistence import SessionStore, list_sessions
 
 ROOT = Path(__file__).parent
-FRONTEND_DIST = ROOT.parent / "frontend" / "dist"
+# Next.js `output: 'export'` writes here. The catch-all below serves the whole
+# tree, so the only build-tool-specific part is which directories get a
+# StaticFiles mount — see mount_frontend.
+FRONTEND_DIST = ROOT.parent / "frontend" / "out"
 PORT = env_int("AGENT_API_PORT", default=8110)
 
 # Session ids are generated as f"run-{uuid4().hex[:8]}" but --resume accepts
@@ -64,6 +69,22 @@ PORT = env_int("AGENT_API_PORT", default=8110)
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 app = FastAPI(title="GraphPilot Console API")
+
+# Off unless asked for. In production the console is served from this same
+# origin, so cross-origin access is exactly the thing we do not want; the one
+# case that needs it is `next dev` on :3000, where the dev server's rewrite
+# proxy can buffer an SSE stream and the client has to hit :8110 directly.
+#
+#     AGENT_API_CORS_ORIGINS=http://localhost:3000 uv run api.py
+_CORS_ORIGINS = [o.strip() for o in
+                 os.getenv("AGENT_API_CORS_ORIGINS", "").split(",") if o.strip()]
+if _CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_CORS_ORIGINS,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["*"],
+    )
 
 
 # ── executor lifecycle ───────────────────────────────────────────────────────
@@ -239,7 +260,17 @@ def _summarise(sid: str) -> dict:
 
 @app.get("/api/sessions")
 async def get_sessions() -> dict:
-    rows = [_summarise(sid) for sid in list_sessions()]
+    """Every readable session, newest first.
+
+    Filtered by SESSION_ID_RE rather than listed raw: `list_sessions()` yields
+    every directory under the sessions root, which in practice includes
+    unrelated ones that tooling leaves behind (a stray `.claude/` is already
+    there). Those would show up in the console as sessions that 400 the moment
+    they are clicked, because every other route validates the id. Listing only
+    what the rest of the API will accept keeps the two consistent.
+    """
+    rows = [_summarise(sid) for sid in list_sessions()
+            if SESSION_ID_RE.match(sid)]
     rows.sort(key=lambda r: r["updated_at"] or 0, reverse=True)
     return {"sessions": rows}
 
@@ -280,6 +311,91 @@ async def get_node(sid: str, nid: str) -> dict:
     if state is None:
         raise HTTPException(404, f"no node {nid} in session {sid}")
     return state.model_dump(mode="json")
+
+
+# ── session media ────────────────────────────────────────────────────────────
+
+# What the files route will hand back. Two allowlists rather than one: the
+# suffix says what the console can render, and the top-level directory says
+# where media lives at all.
+#
+# The directory allowlist is what keeps this route narrow. `.json` has to be
+# servable for a trajectory's app_state.json, but a session directory also
+# holds graph.json, query.txt and the node records — all of which have typed
+# routes of their own — and is a plausible place for a future skill to drop
+# something that should never be fetchable as raw bytes. Confining the route
+# to the two directories the cascades write means it can only ever serve
+# media, whatever else lands in a session later.
+SERVABLE_ROOTS = {"browser", "computer"}
+SERVABLE_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".webp",       # screenshots, set-of-marks overlays
+    ".mp4", ".mov", ".webm",                # cua-driver recordings
+    ".txt", ".json", ".jsonl",              # legends, app state, cursor track
+}
+
+# guess_type does not know .jsonl, and Starlette would fall back to text/plain.
+_EXPLICIT_MEDIA_TYPES = {".jsonl": "application/x-ndjson"}
+
+
+@app.get("/api/sessions/{sid}/artifacts")
+async def get_session_artifacts(sid: str) -> dict:
+    """Manifest of the media this session left on disk.
+
+    Built by walking the directory rather than reading
+    `AgentResult.artifacts`, which both media-producing skills leave empty.
+    See core/media.py for the layouts and why.
+
+    Every path in the response is session-relative and goes straight back to
+    the files route below.
+    """
+    _existing_sid(sid)
+    manifest = media.scan_session(persistence.SESSIONS_ROOT / sid)
+    return {"session_id": sid, **manifest}
+
+
+@app.get("/api/sessions/{sid}/files/{path:path}")
+async def get_session_file(sid: str, path: str) -> FileResponse:
+    """Serve one file from inside a session directory.
+
+    The console needs raw bytes for images and video, which nothing else here
+    exposes. Three guards, in order:
+
+      - the session id is validated and must already exist, so this cannot
+        mkdir a new one (`SessionStore.__init__` would);
+      - the resolved path must stay inside the session directory. resolve()
+        collapses `..` *and* follows symlinks before the check, so neither a
+        crafted relative path nor a symlink planted in `state/` escapes. An
+        absolute `path` is caught here too: `base / "/etc/passwd"` is just
+        `/etc/passwd`, which fails containment;
+      - it must sit under a media directory, and carry a suffix the console
+        actually renders.
+
+    Note trajectory directories are named by raw node id — `n:2`, with a
+    colon — so a client requests
+    `.../files/computer/trajectory/n%3A2/recording.mp4`.
+
+    FileResponse handles Range requests, which is what makes seeking in a
+    trajectory recording work rather than forcing a full download first.
+    """
+    _existing_sid(sid)
+    base = (persistence.SESSIONS_ROOT / sid).resolve()
+    try:
+        resolved = (base / path).resolve()
+    except OSError as e:
+        raise HTTPException(404, f"unreadable path: {path!r}") from e
+
+    if not resolved.is_relative_to(base):
+        raise HTTPException(404, f"no such file: {path!r}")
+    parts = resolved.relative_to(base).parts
+    if not parts or parts[0] not in SERVABLE_ROOTS:
+        raise HTTPException(404, f"no such file: {path!r}")
+    suffix = resolved.suffix.lower()
+    if suffix not in SERVABLE_SUFFIXES:
+        raise HTTPException(415, f"cannot serve {suffix or 'extensionless'} files")
+    if not resolved.is_file():
+        raise HTTPException(404, f"no such file: {path!r}")
+
+    return FileResponse(resolved, media_type=_EXPLICIT_MEDIA_TYPES.get(suffix))
 
 
 # ── runs ─────────────────────────────────────────────────────────────────────
@@ -435,8 +551,18 @@ def mount_frontend(target: FastAPI, dist: Path) -> None:
     A function rather than inline module-level code so a test can exercise the
     catch-all against a throwaway build. Registered last on purpose — see the
     `/api/` guard below — so call this after every real route.
+
+    Both mounts are conditional because the directory a bundler emits is a
+    bundler detail: Next writes `_next/`, Vite writes `assets/`. StaticFiles
+    raises at construction if its directory is missing, so mounting one
+    unconditionally makes the *other* toolchain fail at import rather than at
+    request time. The catch-all below serves either tree correctly on its own;
+    the mounts exist only so static assets skip the SPA fallback logic.
     """
-    target.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+    for url_path, name in (("/assets", "assets"), ("/_next", "next-static")):
+        directory = dist / url_path.lstrip("/")
+        if directory.is_dir():
+            target.mount(url_path, StaticFiles(directory=directory), name=name)
 
     @target.get("/{full_path:path}")
     async def spa(full_path: str) -> Response:

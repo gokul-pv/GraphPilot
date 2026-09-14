@@ -17,7 +17,7 @@ planner: gemini
 researcher: gemini
 distiller: gemini
 summariser: gemini
-critic: groq
+critic: wandb
 formatter: gemini
 retriever: wandb
 sandbox_executor: wandb
